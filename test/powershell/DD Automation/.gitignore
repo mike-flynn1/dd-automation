@@ -1,0 +1,31 @@
+# .gitignore - ignore secrets, logs, temp files, and Examples folder
+
+# Environment variable files
+.env
+
+# Secrets
+*.secret
+secrets.json
+
+# Logs
+logs/
+*.log
+
+# Examples folder
+Examples/
+
+# Temporary files
+*.tmp
+*.temp
+~*.*
+
+# Backup files
+*~
+*.bak
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Ignore user-specific PowerShell configuration files
+config/*.psd1

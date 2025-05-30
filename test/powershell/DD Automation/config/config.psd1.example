@@ -1,0 +1,28 @@
+@{
+    # Debug mode toggle: $true for verbose and mock API calls
+    Debug = $false
+
+    # Tools enable/disable flags
+    Tools = @{
+        TenableWAS  = $true
+        SonarQube   = $false
+        BurpSuite   = $false
+        DefectDojo  = $false
+    }
+
+    # File paths for tools requiring local inputs
+    Paths = @{
+        BurpSuiteXmlFolder = 'C:\Scans\Burp'
+    }
+
+    # API base URLs for tools
+    ApiBaseUrls = @{
+        DefectDojo = 'https://defectdojo.example.com/api/v2'
+        TenableWAS = 'https://fedcloud.tenable.com/'
+        SonarQube  = 'https://sonarqube.example.com/api'
+        BurpSuite =  'http://127.0.0.01:1234/api'
+    }
+
+    # Default scan identifiers (optional)
+    TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'  # Set a default scan ID to export from Tenable WAS
+}
