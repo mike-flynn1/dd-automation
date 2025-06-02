@@ -22,6 +22,9 @@ function Export-TenableWASScan {
     # Load configuration
     $config = Get-Config
 
+    #Initialize Log File
+    Initialize-Log -LogDirectory (Join-Path $PSScriptRoot '..\logs') -LogFileName 'TenableWAS.log' -Overwrite
+
     # Determine Scan ID from parameter or config
     if (-not $ScanId) {
         if ($config.TenableWAS -and $config.TenableWAS.ScanId) {
@@ -38,17 +41,18 @@ function Export-TenableWASScan {
     $accessKey = [Environment]::GetEnvironmentVariable('TENWAS_ACCESS_KEY')
     $secretKey = [Environment]::GetEnvironmentVariable('TENWAS_SECRET_KEY')
     if (-not $accessKey -or -not $secretKey) {
+        Write-Log -Message "Missing Tenable WAS API credentials (TENWAS_ACCESS_KEY or TENWAS_SECRET_KEY)." -Level 'ERROR'
         Throw "Missing Tenable WAS API credentials (TENWAS_ACCESS_KEY or TENWAS_SECRET_KEY)."
     }
 
     # Build report endpoint URI
-    $reportUri = "$apiUrl/scans/$ScanId/report"
+    $reportUri = "$apiUrl/was/v2/scans/$ScanId/report"
 
     # Common request headers
     $headers = @{ 
-        'X-ApiKeys'    = "accessKey=$accessKey;secretKey=$secretKey" 
-        'Content-Type' = 'text/csv'
-        'Accept'       = 'application/json'
+        "X-ApiKeys"    = "accessKey=$accessKey;secretKey=$secretKey" 
+        "Content-Type" = "text/csv"
+        "Accept"       = "application/json"
     }
 
     # Initiate report generation via PUT
@@ -59,12 +63,13 @@ function Export-TenableWASScan {
     Start-Sleep -Seconds 5
 
     # Download the generated report via GET
+    Write-Log -Message "Scan report URL: $reportUri" -Level 'INFO'
     Write-Log -Message "Downloading report for Tenable WAS scan ID $ScanId" -Level 'INFO'
     $tempPath = [System.IO.Path]::GetTempPath()
     $fileName = "$ScanId-report.csv"
     $outFile = Join-Path -Path $tempPath -ChildPath $fileName
 
-    Invoke-RestMethod -Method Get -Uri $reportUri -Headers $headers -OutFile $outFile -UseBasicParsing
+    Invoke-RestMethod -Method GET -Uri $reportUri -Headers $headers -OutFile $outFile
 
     Write-Log -Message "Tenable WAS report saved to $outFile" -Level 'INFO'
     return $outFile

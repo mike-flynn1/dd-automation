@@ -38,7 +38,7 @@ function Write-Log {
         [string]$Level = 'INFO'
     )
     if (-not $script:LogFilePath) {
-        Throw "Log file not initialized. Call Initialize-Log before writing logs."
+        Write-Host "Log file not initialized. Call Initialize-Log before writing logs." 
     }
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $entry = "$timestamp [$Level] $Message"
@@ -51,4 +51,4 @@ function Write-Log {
         'ERROR'   { Write-Error $Message }
     }
 }
-
+
