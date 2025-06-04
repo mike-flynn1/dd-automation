@@ -17,7 +17,7 @@
 
     # API base URLs for tools
     ApiBaseUrls = @{
-        DefectDojo = 'https://defectdojo.example.com/api/v2'
+        DefectDojo = 'https://appsec.internal.bamtech.net/api/v2'
         TenableWAS = 'https://fedcloud.tenable.com/'
         SonarQube  = 'https://sonarqube.example.com/api'
         BurpSuite =  'http://127.0.0.01:1234/api'

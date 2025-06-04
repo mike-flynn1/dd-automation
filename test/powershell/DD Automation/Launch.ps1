@@ -14,8 +14,7 @@
     . (Join-Path $scriptDir 'modules\Config.ps1')
     . (Join-Path $scriptDir 'TenableWAS.ps1')
     . (Join-Path $scriptDir 'EnvValidator.ps1')
-
-
+    . (Join-Path $scriptDir 'DefectDojo.ps1')
 
     #DEBUG
     Get-Command -Module Logging | Format-Table -AutoSize

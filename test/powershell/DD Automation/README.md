@@ -14,6 +14,8 @@
  - Network access to APIs (Defect Dojo, Tenable WAS, SonarQube)
  - Environment variables set for API keys and credentials
  - Pester >5.0 if running tests (DOES NOT CURRENTLY WORK, blocked by AV)
+ - Tool Knowledge 
+
 
  ## Installation
  1. Clone this repository to your local machine.
@@ -32,6 +34,12 @@
  | TENWAS_API_KEY      | API access key for Tenable WAS |
  | TENWAS_API_SECRET   | API secret key for Tenable WAS |
  | SONARQUBE_API_TOKEN | API token for SonarQube        |
+
+ ## Config File
+ Manual Inputs: 
+     - Scan ID for Tenable WAS scan (Add where can be found) (possible future feature add to grab this from scan list)
+     - Burp Scan #? to export from API?
+     - DefectDojo Product + Engagment + Test integers to fill in config files (possible future feature to ask user if not set + grab from API)
 
  ### PowerShell Config
  An example configuration file is provided at `config/config.psd1.example`. Copy it to `config\\config.psd1` and update the values as needed. This file is ignored by Git, allowing personal overrides. 
@@ -61,10 +69,12 @@
  | Config        | Done    | Load and validate configuration                    |
  | Logging       | Done    | Logging framework (Initialize-Log, Write-Log)      |
  | EnvValidator  | Done    | Validate required environment variables            |
- | TenableWAS    | Work IP | Export findings from Tenable WAS                   |
- | SonarQube     | Pending | Fetch issues via SonarQube API                     |
- | BurpSuite     | Pending | Parse Burp XML reports                             |
- | DefectDojo    | Pending | Import findings into Defect Dojo via API           |
+ | TenableWAS    | Done    | Export findings from Tenable WAS                   |
+ | SonarQube     | Pending | Fetch issues via SonarQube API - or use existing DD Integration                    |
+ | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
+ | DefectDojo    | Work IP | Fetch and list products, engagements, and tests via API       |
+ | Local Copy    | Pending | Copy all local docs to proper share                |
+ | Uploader      | Pending | Upload all files to DD via API                     |
 
  ## Roadmap / Next Steps
  1. Implement core function scaffolds in `modules/`.
@@ -72,4 +82,4 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: fix Tenable csv download
+ - Current tasks: Initial 

@@ -21,7 +21,8 @@ $TOOL_ENV_VARS = @{
     'BurpSuite'  = @('BURP_API_KEY')
 }
 
-Initialize-Log -LogDirectory (Join-Path $scriptDir '..\logs') -LogFileName 'EnvValidator.log' -Overwrite
+#TODO: Possibly needed for pester tests. Validate when Pester working
+#Initialize-Log -LogDirectory (Join-Path $scriptDir '..\logs') -LogFileName 'EnvValidator.log' -Overwrite
 
 function Get-EnvVariables {
     [CmdletBinding()]
