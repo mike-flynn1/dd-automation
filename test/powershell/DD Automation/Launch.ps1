@@ -37,7 +37,7 @@
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(620, 500)
+    $form.Size = New-Object System.Drawing.Size(620, 700)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
     
@@ -114,23 +114,149 @@
     $txtTenable.Size = New-Object System.Drawing.Size(460, 20)
     $txtTenable.Location = New-Object System.Drawing.Point(150, 178)
     $form.Controls.Add($txtTenable)
-    
+
+    # DefectDojo selection: Product, Engagement, Test
+    $lblDDProduct = New-Object System.Windows.Forms.Label
+    $lblDDProduct.Text = 'DefectDojo Product:'
+    $lblDDProduct.AutoSize = $true
+    $lblDDProduct.Location = New-Object System.Drawing.Point(10, 210)
+    $form.Controls.Add($lblDDProduct)
+
+    $cmbDDProduct = New-Object System.Windows.Forms.ComboBox
+    $cmbDDProduct.DropDownStyle = 'DropDownList'
+    $cmbDDProduct.Location = New-Object System.Drawing.Point(150, 208)
+    $cmbDDProduct.Size = New-Object System.Drawing.Size(220, 20)
+    $cmbDDProduct.Enabled = $false
+    $form.Controls.Add($cmbDDProduct)
+
+    $lblDDEng = New-Object System.Windows.Forms.Label
+    $lblDDEng.Text = 'Engagement:'
+    $lblDDEng.AutoSize = $true
+    $lblDDEng.Location = New-Object System.Drawing.Point(10, 240)
+    $form.Controls.Add($lblDDEng)
+
+    $cmbDDEng = New-Object System.Windows.Forms.ComboBox
+    $cmbDDEng.DropDownStyle = 'DropDownList'
+    $cmbDDEng.Location = New-Object System.Drawing.Point(150, 238)
+    $cmbDDEng.Size = New-Object System.Drawing.Size(220, 20)
+    $cmbDDEng.Enabled = $false
+    $form.Controls.Add($cmbDDEng)
+
+    # DefectDojo test selectors for each tool
+    $lblDDTestTenable = New-Object System.Windows.Forms.Label
+    $lblDDTestTenable.Text = 'TenableWAS Test:'
+    $lblDDTestTenable.AutoSize = $true
+    $lblDDTestTenable.Location = New-Object System.Drawing.Point(10, 300)
+    $form.Controls.Add($lblDDTestTenable)
+
+    $cmbDDTestTenable = New-Object System.Windows.Forms.ComboBox
+    $cmbDDTestTenable.DropDownStyle = 'DropDownList'
+    $cmbDDTestTenable.Location = New-Object System.Drawing.Point(150, 298)
+    $cmbDDTestTenable.Size = New-Object System.Drawing.Size(220, 20)
+    $cmbDDTestTenable.Enabled = $false
+    $form.Controls.Add($cmbDDTestTenable)
+
+    $lblDDTestSonar = New-Object System.Windows.Forms.Label
+    $lblDDTestSonar.Text = 'SonarQube Test:'
+    $lblDDTestSonar.AutoSize = $true
+    $lblDDTestSonar.Location = New-Object System.Drawing.Point(10, 330)
+    $form.Controls.Add($lblDDTestSonar)
+
+    $cmbDDTestSonar = New-Object System.Windows.Forms.ComboBox
+    $cmbDDTestSonar.DropDownStyle = 'DropDownList'
+    $cmbDDTestSonar.Location = New-Object System.Drawing.Point(150, 328)
+    $cmbDDTestSonar.Size = New-Object System.Drawing.Size(220, 20)
+    $cmbDDTestSonar.Enabled = $false
+    $form.Controls.Add($cmbDDTestSonar)
+
+    $lblDDTestBurp = New-Object System.Windows.Forms.Label
+    $lblDDTestBurp.Text = 'BurpSuite Test:'
+    $lblDDTestBurp.AutoSize = $true
+    $lblDDTestBurp.Location = New-Object System.Drawing.Point(10, 360)
+    $form.Controls.Add($lblDDTestBurp)
+
+    $cmbDDTestBurp = New-Object System.Windows.Forms.ComboBox
+    $cmbDDTestBurp.DropDownStyle = 'DropDownList'
+    $cmbDDTestBurp.Location = New-Object System.Drawing.Point(150, 358)
+    $cmbDDTestBurp.Size = New-Object System.Drawing.Size(220, 20)
+    $cmbDDTestBurp.Enabled = $false
+    $form.Controls.Add($cmbDDTestBurp)
+
+    # Enable/disable test selectors based on tool selection
+    $chkBoxes['TenableWAS'].Add_CheckedChanged({ $cmbDDTestTenable.Enabled = $chkBoxes['TenableWAS'].Checked -and $cmbDDTestTenable.Items.Count -gt 0 })
+    $chkBoxes['SonarQube'].Add_CheckedChanged({  $cmbDDTestSonar.Enabled  = $chkBoxes['SonarQube'].Checked  -and $cmbDDTestSonar.Items.Count  -gt 0 })
+    $chkBoxes['BurpSuite'].Add_CheckedChanged({ $cmbDDTestBurp.Enabled   = $chkBoxes['BurpSuite'].Checked -and $cmbDDTestBurp.Items.Count   -gt 0 })
+
+    # Load products when DefectDojo is enabled
+    if ($chkBoxes['DefectDojo'].Checked) {
+        Write-GuiMessage 'Loading DefectDojo products...'
+        try {
+            $products = Get-DefectDojoProducts
+            $cmbDDProduct.Items.Clear()
+            foreach ($p in $products) { $cmbDDProduct.Items.Add($p) | Out-Null }
+            $cmbDDProduct.DisplayMember = 'Name'; $cmbDDProduct.ValueMember = 'Id'
+            $cmbDDProduct.Enabled = $true
+        } catch {
+            Write-GuiMessage "Failed to load DefectDojo products: $_" 'ERROR'
+        }
+    }
+
+    $cmbDDProduct.Add_SelectedIndexChanged({
+        $sel = $cmbDDProduct.SelectedItem
+        if ($sel) {
+            Write-GuiMessage "Loading engagements for product $($sel.Name)..."
+            try {
+                $engs = Get-DefectDojoEngagements -ProductId $sel.Id
+                $cmbDDEng.Items.Clear()
+                foreach ($e in $engs) { $cmbDDEng.Items.Add($e) | Out-Null }
+                $cmbDDEng.DisplayMember = 'Name'; $cmbDDEng.ValueMember = 'Id'
+                $cmbDDEng.Enabled = $true
+                $cmbDDTestTenable.Enabled = $false; $cmbDDTestTenable.Items.Clear()
+                $cmbDDTestSonar.Enabled  = $false; $cmbDDTestSonar.Items.Clear()
+                $cmbDDTestBurp.Enabled   = $false; $cmbDDTestBurp.Items.Clear()
+            } catch {
+                Write-GuiMessage "Failed to load engagements: $_" 'ERROR'
+            }
+        }
+    })
+
+    $cmbDDEng.Add_SelectedIndexChanged({
+        $selEng = $cmbDDEng.SelectedItem
+        if ($selEng) {
+            Write-GuiMessage "Loading tests for engagement $($selEng.Name)..."
+            try {
+                $tests = Get-DefectDojoTests -EngagementId $selEng.Id
+                foreach ($cmb in @($cmbDDTestTenable, $cmbDDTestSonar, $cmbDDTestBurp)) {
+                    $cmb.Items.Clear()
+                    foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
+                    $cmb.DisplayMember = 'Name'; $cmb.ValueMember = 'Id'
+                    $cmb.Enabled = $true
+                }
+                if (-not $chkBoxes['TenableWAS'].Checked) { $cmbDDTestTenable.Enabled = $false }
+                if (-not $chkBoxes['SonarQube'].Checked)  { $cmbDDTestSonar.Enabled  = $false }
+                if (-not $chkBoxes['BurpSuite'].Checked) { $cmbDDTestBurp.Enabled   = $false }
+            } catch {
+                Write-GuiMessage "Failed to load tests: $_" 'ERROR'
+            }
+        }
+    })
+
     # Status ListBox
     $lstStatus = New-Object System.Windows.Forms.ListBox
-    $lstStatus.Size = New-Object System.Drawing.Size(580, 170)
-    $lstStatus.Location = New-Object System.Drawing.Point(10, 210)
+    $lstStatus.Size = New-Object System.Drawing.Size(580, 180)
+    $lstStatus.Location = New-Object System.Drawing.Point(10, 420)
     $form.Controls.Add($lstStatus)
     
     # Buttons
     $btnLaunch = New-Object System.Windows.Forms.Button
     $btnLaunch.Text = 'Launch'
-    $btnLaunch.Location = New-Object System.Drawing.Point(420, 390)
+    $btnLaunch.Location = New-Object System.Drawing.Point(420, 620)
     $btnLaunch.Size = New-Object System.Drawing.Size(80, 30)
     $form.Controls.Add($btnLaunch)
     
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = 'Cancel'
-    $btnCancel.Location = New-Object System.Drawing.Point(520, 390)
+    $btnCancel.Location = New-Object System.Drawing.Point(520, 620)
     $btnCancel.Size = New-Object System.Drawing.Size(80, 30)
     $form.Controls.Add($btnCancel)
       # Define log function for GUI
@@ -201,7 +327,35 @@
                 }
             }
 
-            #TODO - Implement save to config
+            # Save DefectDojo selections and write back to config file if selected
+            if ($config.Tools.DefectDojo) {
+                if ($cmbDDProduct.SelectedItem -and $cmbDDEng.SelectedItem `
+                    -and ((-not $config.Tools.TenableWAS) -or $cmbDDTestTenable.SelectedItem) `
+                    -and ((-not $config.Tools.SonarQube)  -or $cmbDDTestSonar.SelectedItem) `
+                    -and ((-not $config.Tools.BurpSuite) -or $cmbDDTestBurp.SelectedItem)) {
+                    $config.DefectDojo = @{ 
+                        ProductId         = $cmbDDProduct.SelectedItem.Id
+                        EngagementId      = $cmbDDEng.SelectedItem.Id
+                        TenableWASTestId  = $cmbDDTestTenable.SelectedItem.Id
+                        SonarQubeTestId   = $cmbDDTestSonar.SelectedItem.Id
+                        BurpSuiteTestId   = $cmbDDTestBurp.SelectedItem.Id
+                    }
+                    Write-GuiMessage "Selected DefectDojo Product: $($cmbDDProduct.SelectedItem.Name) (Id: $($cmbDDProduct.SelectedItem.Id))"
+                    Write-GuiMessage "Selected Engagement: $($cmbDDEng.SelectedItem.Name) (Id: $($cmbDDEng.SelectedItem.Id))"
+                    Write-GuiMessage "Selected TenableWAS Test: $($cmbDDTestTenable.SelectedItem.Name) (Id: $($cmbDDTestTenable.SelectedItem.Id))"
+                    Write-GuiMessage "Selected SonarQube Test: $($cmbDDTestSonar.SelectedItem.Name) (Id: $($cmbDDTestSonar.SelectedItem.Id))"
+                    Write-GuiMessage "Selected BurpSuite Test: $($cmbDDTestBurp.SelectedItem.Name) (Id: $($cmbDDTestBurp.SelectedItem.Id))"
+                    Write-GuiMessage 'Saving DefectDojo selections to config file...'
+                    try {
+                        Save-Config -Config $config
+                        Write-GuiMessage 'DefectDojo configuration saved.'
+                    } catch {
+                        Write-GuiMessage "Failed to save DefectDojo configuration: $_" 'ERROR'
+                    }
+                } else {
+                    Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
+                }
+            }
             Write-GuiMessage 'Configuration stored in global $Config. Closing GUI.'
             Start-Sleep -Milliseconds 500
             $form.Close()
@@ -228,6 +382,57 @@
         $txtTenable.Text = $initialConfig.TenableWAS.ScanId
     } elseif ($initialConfig.TenableWASScanId) {
         $txtTenable.Text = $initialConfig.TenableWASScanId
+    }
+
+    # Prepopulate DefectDojo selections
+    if ($initialConfig.DefectDojo) {
+        Write-GuiMessage 'Prepopulating DefectDojo products...'
+        try {
+            $cmbDDProduct.Items.Clear()
+            $products = Get-DefectDojoProducts
+            foreach ($p in $products) { $cmbDDProduct.Items.Add($p) | Out-Null }
+            $cmbDDProduct.DisplayMember = 'Name'; $cmbDDProduct.ValueMember = 'Id'
+            $cmbDDProduct.Enabled = $true
+            if ($initialConfig.DefectDojo.ProductId) {
+                $sel = $cmbDDProduct.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.ProductId }
+                if ($sel) { $cmbDDProduct.SelectedItem = $sel }
+            }
+        } catch {
+            Write-GuiMessage "Failed to prepopulate DefectDojo products: $_" 'ERROR'
+        }
+        if ($initialConfig.DefectDojo.EngagementId) {
+            try {
+                $selEng = $cmbDDEng.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.EngagementId }
+                if ($selEng) { $cmbDDEng.SelectedItem = $selEng }
+            } catch {
+                Write-GuiMessage "Failed to prepopulate DefectDojo engagements: $_" 'ERROR'
+            }
+        }
+        # Prepopulate tool-specific DefectDojo tests
+        if ($initialConfig.DefectDojo.TenableWASTestId) {
+            try {
+                $sel = $cmbDDTestTenable.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.TenableWASTestId }
+                if ($sel) { $cmbDDTestTenable.SelectedItem = $sel }
+            } catch {
+                Write-GuiMessage "Failed to prepopulate DefectDojo TenableWAS test: $_" 'ERROR'
+            }
+        }
+        if ($initialConfig.DefectDojo.SonarQubeTestId) {
+            try {
+                $sel = $cmbDDTestSonar.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.SonarQubeTestId }
+                if ($sel) { $cmbDDTestSonar.SelectedItem = $sel }
+            } catch {
+                Write-GuiMessage "Failed to prepopulate DefectDojo SonarQube test: $_" 'ERROR'
+            }
+        }
+        if ($initialConfig.DefectDojo.BurpSuiteTestId) {
+            try {
+                $sel = $cmbDDTestBurp.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.BurpSuiteTestId }
+                if ($sel) { $cmbDDTestBurp.SelectedItem = $sel }
+            } catch {
+                Write-GuiMessage "Failed to prepopulate DefectDojo BurpSuite test: $_" 'ERROR'
+            }
+        }
     }
     
     # Show form

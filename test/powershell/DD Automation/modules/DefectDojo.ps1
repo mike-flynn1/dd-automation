@@ -122,6 +122,6 @@ function Get-DefectDojoTests {
 }
 
 # DEBUG
-Get-DefectDojoProducts | ForEach-Object {
-    Write-Log -Message "Product: $($_.Name) (Id: $($_.Id))" -Level 'INFO'
-}
+# Get-DefectDojoProducts | ForEach-Object {
+#     Write-Log -Message "Product: $($_.Name) (Id: $($_.Id))" -Level 'INFO'
+# }

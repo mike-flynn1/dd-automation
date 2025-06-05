@@ -80,3 +80,76 @@ function Validate-Config {
     Write-Verbose "Configuration validation passed."
     return $true
 }
+
+function Save-Config {
+    <#
+    .SYNOPSIS
+        Saves the configuration hashtable to a PowerShell data file (.psd1).
+    .DESCRIPTION
+        Writes the provided configuration hashtable back to the config.psd1 file,
+        preserving the PowerShell data file format. Overwrites any existing file.
+    .PARAMETER Config
+        The configuration hashtable to serialize and save.
+    .PARAMETER ConfigPath
+        The file path to write the configuration to. Defaults to config\config.psd1 in the repo root.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Config,
+
+        [string]$ConfigPath = (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')
+    )
+
+    # Build the PS data file content
+    $sb = New-Object System.Text.StringBuilder
+    $sb.AppendLine('@{') | Out-Null
+    # Debug
+    $sb.AppendLine("    Debug = $($Config.Debug.ToString().ToLower())") | Out-Null
+    $sb.AppendLine('') | Out-Null
+    # Tools
+    $sb.AppendLine('    Tools = @{') | Out-Null
+    foreach ($tool in $Config.Tools.Keys) {
+        $val = $Config.Tools[$tool].ToString().ToLower()
+        $sb.AppendLine("        $tool = $val") | Out-Null
+    }
+    $sb.AppendLine('    }') | Out-Null
+    $sb.AppendLine('') | Out-Null
+    # Paths
+    $sb.AppendLine('    Paths = @{') | Out-Null
+    foreach ($pathKey in $Config.Paths.Keys) {
+        $escaped = ($Config.Paths[$pathKey] -replace '\\','\\')
+        $sb.AppendLine("        $pathKey = '$escaped'") | Out-Null
+    }
+    $sb.AppendLine('    }') | Out-Null
+    $sb.AppendLine('') | Out-Null
+    # ApiBaseUrls
+    $sb.AppendLine('    ApiBaseUrls = @{') | Out-Null
+    foreach ($api in $Config.ApiBaseUrls.Keys) {
+        $url = ($Config.ApiBaseUrls[$api] -replace '\\','\\')
+        $sb.AppendLine("        $api = '$url'") | Out-Null
+    }
+    $sb.AppendLine('    }') | Out-Null
+    # DefectDojo selections
+    if ($Config.ContainsKey('DefectDojo')) {
+        $sb.AppendLine('') | Out-Null
+        $sb.AppendLine('    DefectDojo = @{') | Out-Null
+        foreach ($key in $Config.DefectDojo.Keys) {
+            $val = $Config.DefectDojo[$key]
+            if ($val -is [string]) {
+                $sb.AppendLine("        $key = '$val'") | Out-Null
+            } else {
+                $sb.AppendLine("        $key = $val") | Out-Null
+            }
+        }
+        $sb.AppendLine('    }') | Out-Null
+    }
+    $sb.AppendLine('}') | Out-Null
+
+    try {
+        $sb.ToString() | Out-File -FilePath $ConfigPath -Encoding UTF8 -Force
+        Write-Verbose "Configuration saved to $ConfigPath"
+    } catch {
+        Throw "Failed to save configuration to $ConfigPath. Error: $_"
+    }
+}
