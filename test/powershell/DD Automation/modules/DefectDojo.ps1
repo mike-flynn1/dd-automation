@@ -120,3 +120,8 @@ function Get-DefectDojoTests {
 
     return $response.results | Select-Object @{Name='Id';Expression={$_.id}}, @{Name='Name';Expression={$_.name}}
 }
+
+# DEBUG
+Get-DefectDojoProducts | ForEach-Object {
+    Write-Log -Message "Product: $($_.Name) (Id: $($_.Id))" -Level 'INFO'
+}

@@ -82,4 +82,4 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: Initial 
+ - Current tasks: Initial DD module, list DD info in GUI and choose which ones to save to config file
