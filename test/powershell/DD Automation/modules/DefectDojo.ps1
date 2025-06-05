@@ -118,10 +118,18 @@ function Get-DefectDojoTests {
     Write-Log -Message "Retrieving DefectDojo tests for engagement $EngagementId (limit=$Limit)" -Level 'INFO'
     $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -UseBasicParsing
 
-    return $response.results | Select-Object @{Name='Id';Expression={$_.id}}, @{Name='Name';Expression={$_.name}}
+    return $response.results | Select-Object @{Name='Id';Expression={$_.id}}, @{Name='Name';Expression={$_.test_type_name}}
 }
 
-# DEBUG
+#DEBUG
 # Get-DefectDojoProducts | ForEach-Object {
 #     Write-Log -Message "Product: $($_.Name) (Id: $($_.Id))" -Level 'INFO'
+# }
+
+# Get-DefectDojoEngagements -ProductId 1 | ForEach-Object {
+#     Write-Log -Message "Engagement: $($_.Name) (Id: $($_.Id))" -Level 'INFO'
+# }
+
+# Get-DefectDojoTests -EngagementId 11 | ForEach-Object {
+#     Write-Log -Message "Test: $($_.Name) (Id: $($_.Id))" -Level 'INFO'
 # }

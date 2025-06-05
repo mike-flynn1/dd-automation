@@ -223,18 +223,23 @@
     $cmbDDEng.Add_SelectedIndexChanged({
         $selEng = $cmbDDEng.SelectedItem
         if ($selEng) {
-            Write-GuiMessage "Loading tests for engagement $($selEng.Name)..."
             try {
+                Write-GuiMessage "Loading tests for engagement $($selEng.Name)..."
                 $tests = Get-DefectDojoTests -EngagementId $selEng.Id
                 foreach ($cmb in @($cmbDDTestTenable, $cmbDDTestSonar, $cmbDDTestBurp)) {
                     $cmb.Items.Clear()
-                    foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
+                    if ($tests) {
+                        foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
+                    }
                     $cmb.DisplayMember = 'Name'; $cmb.ValueMember = 'Id'
-                    $cmb.Enabled = $true
+                    $cmb.Enabled = ($tests -and $tests.Count -gt 0)
                 }
                 if (-not $chkBoxes['TenableWAS'].Checked) { $cmbDDTestTenable.Enabled = $false }
                 if (-not $chkBoxes['SonarQube'].Checked)  { $cmbDDTestSonar.Enabled  = $false }
                 if (-not $chkBoxes['BurpSuite'].Checked) { $cmbDDTestBurp.Enabled   = $false }
+                if (-not $tests -or $tests.Count -eq 0) {
+                    Write-GuiMessage "No DefectDojo tests found for engagement $($selEng.Name)." 'WARNING'
+                }
             } catch {
                 Write-GuiMessage "Failed to load tests: $_" 'ERROR'
             }
