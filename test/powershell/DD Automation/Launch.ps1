@@ -71,7 +71,7 @@
     $form.Controls.Add($lblBurp)
     
     $txtBurp = New-Object System.Windows.Forms.TextBox
-    $txtBurp.Size = New-Object System.Drawing.Size(460, 20)
+    $txtBurp.Size = New-Object System.Drawing.Size(370, 20)
     $txtBurp.Location = New-Object System.Drawing.Point(150, 118)
     $form.Controls.Add($txtBurp)
     
@@ -97,11 +97,11 @@
     })
     
     # Debug mode checkbox
-    $chkDebug = New-Object System.Windows.Forms.CheckBox
-    $chkDebug.Text = 'Debug Mode'
-    $chkDebug.AutoSize = $true
-    $chkDebug.Location = New-Object System.Drawing.Point(10, 150)
-    $form.Controls.Add($chkDebug)
+    # $chkDebug = New-Object System.Windows.Forms.CheckBox
+    # $chkDebug.Text = 'Debug Mode'
+    # $chkDebug.AutoSize = $true
+    # $chkDebug.Location = New-Object System.Drawing.Point(10, 150)
+    # $form.Controls.Add($chkDebug)
     
     # TenableWAS Scan ID entry
     $lblTenable = New-Object System.Windows.Forms.Label
@@ -111,7 +111,7 @@
     $form.Controls.Add($lblTenable)
 
     $txtTenable = New-Object System.Windows.Forms.TextBox
-    $txtTenable.Size = New-Object System.Drawing.Size(460, 20)
+    $txtTenable.Size = New-Object System.Drawing.Size(370, 20)
     $txtTenable.Location = New-Object System.Drawing.Point(150, 178)
     $form.Controls.Add($txtTenable)
 

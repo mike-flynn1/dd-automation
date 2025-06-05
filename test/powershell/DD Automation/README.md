@@ -72,7 +72,7 @@
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
  | SonarQube     | Pending | Fetch issues via SonarQube API - or use existing DD Integration                    |
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
- | DefectDojo    | Work IP | Fetch and list products, engagements, and tests via API       |
+ | DefectDojo    | Done    | Fetch and list products, engagements, and tests via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Pending | Upload all files to DD via API                     |
 
@@ -82,4 +82,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: Initial DD module, list DD info in GUI and choose which ones to save to config file
+ - Current tasks: Verify saving DD IDs to config file, scaffold updater starting with Tenable WAS.
+ - Future: Remove debug mode, doing in local ps1 files, clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, refactor Tenable module to be a dropdown of scans like DD
