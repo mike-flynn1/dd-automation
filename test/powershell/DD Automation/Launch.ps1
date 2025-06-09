@@ -316,7 +316,6 @@
             if ($config.Tools.BurpSuite) {
                 Write-GuiMessage "BurpSuite XML folder: $($config.Paths.BurpSuiteXmlFolder)"
             }
-            Write-GuiMessage "Debug Mode: $($config.Debug)"
     
             # Expose to session
             Set-Variable -Name Config -Scope Global -Value $config

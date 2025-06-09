@@ -83,5 +83,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: scaffold updater starting with Tenable WAS., fix save-config function
+ - Current tasks: scaffold uploader starting with Tenable WAS.
  - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, refactor Tenable module to be a dropdown of scans like DD, test file for uploader.ps1 when finished

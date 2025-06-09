@@ -22,8 +22,6 @@ function Export-TenableWASScan {
     # Load configuration
     $config = Get-Config
 
-    #Initialize Log File
-    Initialize-Log -LogDirectory (Join-Path $PSScriptRoot '..\logs') -LogFileName 'TenableWAS.log' -Overwrite
 
     # Determine Scan ID from parameter or config
     if (-not $ScanId) {

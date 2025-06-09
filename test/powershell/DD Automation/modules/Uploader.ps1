@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Uploads scan reports to DefectDojo via the import-scan API endpoint.
+    Uploads scan reports to DefectDojo via the import-scan or reimport API endpoint.
 .DESCRIPTION
     Provides functions to upload scan report files to a specified DefectDojo test record,
     and a wrapper to re-import a file to the test IDs selected in the GUI configuration.
@@ -29,7 +29,7 @@ function Upload-DefectDojoScan {
     if (-not $apiKey) {
         Throw 'Missing DefectDojo API key (DOJO_API_KEY).'
     }
-    $uri     = "$baseUrl/import-scan/"
+    $uri     = "$baseUrl/reimport-scan/"
     $headers = @{ Authorization = "Token $apiKey" }
     $form    = @{
         test      = $TestId
@@ -43,10 +43,10 @@ function Upload-DefectDojoScan {
     return $response
 }
 
-function Import-DefectDojoScans {
+function Select-DefectDojoScans {
     <#
     .SYNOPSIS
-        Re-imports a scan report file to the DefectDojo test(s) selected in the GUI.
+        Calls Upload-DefectDojoScan based on selections made.
     .DESCRIPTION
         Loads the configured test IDs from the GUI settings and calls Upload-DefectDojoScan
         once per non-empty test ID, using the appropriate scan type for each tool.
