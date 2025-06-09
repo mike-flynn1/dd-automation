@@ -46,7 +46,7 @@ function Validate-Config {
     $errors = @()
 
     # Required top-level keys
-    $requiredKeys = @('Debug', 'Tools', 'Paths', 'ApiBaseUrls')
+    $requiredKeys = @('Tools', 'Paths', 'ApiBaseUrls', 'DefectDojo')
     foreach ($key in $requiredKeys) {
         if (-not $Config.ContainsKey($key)) {
             $errors += "Missing required top-level configuration key: $key"
@@ -104,21 +104,18 @@ function Save-Config {
     # Build the PS data file content
     $sb = New-Object System.Text.StringBuilder
     $sb.AppendLine('@{') | Out-Null
-    # Debug
-    $sb.AppendLine("    Debug = $($Config.Debug.ToString().ToLower())") | Out-Null
-    $sb.AppendLine('') | Out-Null
     # Tools
     $sb.AppendLine('    Tools = @{') | Out-Null
     foreach ($tool in $Config.Tools.Keys) {
         $val = $Config.Tools[$tool].ToString().ToLower()
-        $sb.AppendLine("        $tool = $val") | Out-Null
+        $sb.AppendLine("        $tool = `$$val") | Out-Null
     }
     $sb.AppendLine('    }') | Out-Null
     $sb.AppendLine('') | Out-Null
     # Paths
     $sb.AppendLine('    Paths = @{') | Out-Null
     foreach ($pathKey in $Config.Paths.Keys) {
-        $escaped = ($Config.Paths[$pathKey] -replace '\\','\\')
+        $escaped = ($Config.Paths[$pathKey] -replace '\\','\')
         $sb.AppendLine("        $pathKey = '$escaped'") | Out-Null
     }
     $sb.AppendLine('    }') | Out-Null
@@ -130,14 +127,25 @@ function Save-Config {
         $sb.AppendLine("        $api = '$url'") | Out-Null
     }
     $sb.AppendLine('    }') | Out-Null
+    #TenableWAS ScanId
+    if ($Config.ContainsKey('TenableWASScanId')) {
+        $sb.AppendLine('') | Out-Null
+        $scanId = $Config.TenableWASScanId
+        if ($null -ne $scanId) {
+            $sb.AppendLine("    TenableWASScanId = '$scanId'") | Out-Null
+        } else {
+            $sb.AppendLine('    TenableWASScanId = $null') | Out-Null
+        }
+    }
     # DefectDojo selections
     if ($Config.ContainsKey('DefectDojo')) {
         $sb.AppendLine('') | Out-Null
         $sb.AppendLine('    DefectDojo = @{') | Out-Null
         foreach ($key in $Config.DefectDojo.Keys) {
             $val = $Config.DefectDojo[$key]
-            if ($val -is [string]) {
-                $sb.AppendLine("        $key = '$val'") | Out-Null
+            if ($null -eq $val -or $val -is [string]) {
+                $inner = if ($null -eq $val) { '' } else { $val }
+                $sb.AppendLine("        $key = '$inner'") | Out-Null
             } else {
                 $sb.AppendLine("        $key = $val") | Out-Null
             }
@@ -153,3 +161,4 @@ function Save-Config {
         Throw "Failed to save configuration to $ConfigPath. Error: $_"
     }
 }
+Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')

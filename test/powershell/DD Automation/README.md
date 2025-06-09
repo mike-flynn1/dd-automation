@@ -50,6 +50,7 @@
  ├── logs/           # Timestamped log files
  ├── modules/        # Individual function .ps1 files
  ├── Examples/       # Example input files (ignored by Git)
+ ├── Tests/          # Test files (CURRENTLY NONFUNCTIONAL)
  ├── .gitignore
  └── README.md       # Project documentation
 ```

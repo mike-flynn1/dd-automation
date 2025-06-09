@@ -1,7 +1,4 @@
 @{
-    # Debug mode toggle: $true for verbose and mock API calls
-    Debug = $false
-
     # Tools enable/disable flags
     Tools = @{
         TenableWAS  = $true
