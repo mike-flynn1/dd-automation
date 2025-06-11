@@ -1,4 +1,4 @@
-    <#
+<#
     .SYNOPSIS
         DD Automation GUI Launcher
     .DESCRIPTION
@@ -326,6 +326,25 @@
                     $exportedFile = Export-TenableWASScan -ScanId $config.TenableWAS.ScanId
                     Start-Sleep -Seconds 5
                     Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
+                    
+                    # Upload the exported file to DefectDojo if both TenableWAS and DefectDojo are enabled
+                    if ($config.Tools.DefectDojo) {
+                        Write-GuiMessage "Uploading TenableWAS scan report to DefectDojo..."
+                        try {
+                            # Import the Uploader module if not already loaded
+                            $uploaderPath = Join-Path $scriptDir 'Uploader.ps1'
+                            . $uploaderPath
+                            
+                            # Ensure file path is explicitly converted to string
+                            $filePathString = $exportedFile.ToString()
+
+                            # Upload the file to DefectDojo using the Select-DefectDojoScans function
+                            Select-DefectDojoScans -FilePath $filePathString
+                            Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo" 'INFO'
+                        } catch {
+                            Write-GuiMessage "Failed to upload TenableWAS scan report to DefectDojo: $_" 'ERROR'
+                        }
+                    }
                 } catch {
                     Write-GuiMessage "TenableWAS scan export failed: $_" 'ERROR'
                 }
@@ -364,6 +383,7 @@
             Start-Sleep -Milliseconds 500
             $form.Close()
         }
+        
         catch {
             Write-GuiMessage "Error: $_" 'ERROR'
         }
