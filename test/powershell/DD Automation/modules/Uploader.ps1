@@ -40,7 +40,39 @@ function Upload-DefectDojoScan {
     Write-Log -Message "Uploading file '$FilePath' to DefectDojo test $TestId (scan_type=$ScanType)" -Level 'INFO'
     $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Form $form -UseBasicParsing
     Write-Log -Message "DefectDojo import-scan response: $($response | Out-String)" -Level 'DEBUG'
-    return $response
+}
+
+function ProUpload-DefectDojoScan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory=$true)]
+        [int]$TestId,
+
+        [Parameter(Mandatory=$false)]
+        [string]$ScanType = 'Tenable WAS Scan'
+    )
+
+    $config  = Get-Config
+    $baseUrl = $config.ApiBaseUrls.DefectDojo.TrimEnd('/')
+    $apiKey  = [Environment]::GetEnvironmentVariable('DOJO_API_KEY')
+    if (-not $apiKey) {
+        Throw 'Missing DefectDojo API key (DOJO_API_KEY).'
+    }
+    # Build and invoke universal-importer for reimport
+    $exePath = Join-Path $moduleRoot 'universal-importer.exe'
+    $args    = @(
+        'reimport',
+        '-u', $baseUrl,
+        '-s', $ScanType,
+        '-r', $FilePath,
+        '--test-id', $TestId
+    )
+    $output = & $exePath @args 2>&1 | Out-String
+    Write-Log -Message "Universal importer reimport output: $output" -Level 'INFO'
+    return $output
 }
 
 function Select-DefectDojoScans {
@@ -61,7 +93,7 @@ function Select-DefectDojoScans {
 
     $config = Get-Config
     $map = @{
-        'TenableWASTestId'  = 'Tenable WAS Scan'
+        'TenableWASTestId'  = 'Tenable Scan'
         'SonarQubeTestId'   = 'SonarQube Scan'
         'BurpSuiteTestId'   = 'Burp Scan'
     }
@@ -70,7 +102,11 @@ function Select-DefectDojoScans {
             $testId   = [int]$config.DefectDojo[$key]
             $scanType = $map[$key]
             Write-Log -Message "Re-importing '$FilePath' to DefectDojo test $testId (scan_type=$scanType)" -Level 'INFO'
-            Upload-DefectDojoScan -FilePath $FilePath -TestId $testId -ScanType $scanType
+            #Upload-DefectDojoScan -FilePath $FilePath -TestId $testId -ScanType $scanType
+            ProUpload-DefectDojoScan -FilePath $FilePath -TestId $testId -ScanType $scanType
         }
     }
 }
+
+#DEBUG
+Select-DefectDojoScans -FilePath  "C:\Users\michael.flynn\AppData\Local\Temp\0a514d9e-7e2f-4bd5-9e22-e5044e94bc77-report.csv"
