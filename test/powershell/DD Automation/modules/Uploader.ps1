@@ -30,16 +30,21 @@ function Upload-DefectDojoScan {
         Throw 'Missing DefectDojo API key (DOJO_API_KEY).'
     }
     $uri     = "$baseUrl/reimport-scan/"
-    $headers = @{ Authorization = "Token $apiKey" }
+    $headers = @{ 
+        Authorization = "Token $apiKey"
+        accept        = 'application/json'
+        #'Content-Type' = 'multipart/form-data'
+    }
     $form    = @{
-        test      = $TestId
+        test   = $TestId
         scan_type = $ScanType
         file      = Get-Item -Path $FilePath
     }
 
-    Write-Log -Message "Uploading file '$FilePath' to DefectDojo test $TestId (scan_type=$ScanType)" -Level 'INFO'
+
     $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Form $form -UseBasicParsing
-    Write-Log -Message "DefectDojo import-scan response: $($response | Out-String)" -Level 'DEBUG'
+    Write-Log -Message "DefectDojo import-scan response: $($response | Out-String)" -Level 'INFO'
+    return $response
 }
 
 function ProUpload-DefectDojoScan {
@@ -102,8 +107,8 @@ function Select-DefectDojoScans {
             $testId   = [int]$config.DefectDojo[$key]
             $scanType = $map[$key]
             Write-Log -Message "Re-importing '$FilePath' to DefectDojo test $testId (scan_type=$scanType)" -Level 'INFO'
-            #Upload-DefectDojoScan -FilePath $FilePath -TestId $testId -ScanType $scanType
-            ProUpload-DefectDojoScan -FilePath $FilePath -TestId $testId -ScanType $scanType
+            Upload-DefectDojoScan -FilePath $FilePath -TestId $testId -ScanType $scanType
+            #ProUpload-DefectDojoScan -FilePath $FilePath -TestId $testId -ScanType $scanType
         }
     }
 }

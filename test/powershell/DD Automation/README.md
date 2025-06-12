@@ -10,7 +10,7 @@
 
  ## Prerequisites
  - Windows 10 or 11
- - PowerShell 5.1 or later
+ - PowerShell 7.2 or later
  - Network access to APIs (Defect Dojo, Tenable WAS, SonarQube)
  - Environment variables set for API keys and credentials
  - Pester >5.0 if running tests (DOES NOT CURRENTLY WORK, blocked by AV)
