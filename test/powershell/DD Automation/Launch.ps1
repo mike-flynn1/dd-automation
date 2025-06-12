@@ -5,7 +5,28 @@
         Provides a graphical interface to select tools, file paths, and debug mode for DD Automation.
     #>
     
-    Param()
+Param()
+
+# Enforce PowerShell 7.2+
+$minVersion = [version]"7.2"
+if ($PSVersionTable.PSVersion -lt $minVersion) {
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if (-not $pwsh) {
+        Write-Host "PowerShell 7.2+ is required."
+        $install = Read-Host "Install PowerShell 7.2+ via Winget? (Y/N)"
+        if ($install -match '^[Yy]') {
+            winget install --id Microsoft.PowerShell --source winget --accept-source-agreements --accept-package-agreements
+            $pwsh = Get-Command pwsh.exe -ErrorAction Stop
+        } else {
+            Write-Host "Please install PowerShell 7.2+ manually from https://aka.ms/pscore"
+            exit 1
+        }
+    }
+    Write-Host "Relaunching under PowerShell 7.2+..."
+    & $pwsh.Source -NoProfile -File $MyInvocation.MyCommand.Definition @args
+    exit
+}
+
     
     $scriptDir = $PSScriptRoot
 
