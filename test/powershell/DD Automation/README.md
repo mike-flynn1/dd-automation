@@ -39,7 +39,6 @@
  Manual Inputs: 
      - Scan ID for Tenable WAS scan (Add where can be found) (possible future feature add to grab this from scan list)
      - Burp Scan #? to export from API?
-     - DefectDojo Product + Engagment + Test integers to fill in config files (possible future feature to ask user if not set + grab from API)
 
  ### PowerShell Config
  An example configuration file is provided at `config/config.psd1.example`. Copy it to `config\\config.psd1` and update the values as needed. This file is ignored by Git, allowing personal overrides. 
@@ -57,10 +56,12 @@
 
 ## Usage
 
- 1. Open PowerShell with appropriate execution policy.
- 2. Launch the script using .\Launch.ps1
- 3. A GUI prompt will launch to select tools and input files/folders.
- 4. Monitor progress in the console and GUI; detailed logs are written to `logs/`.
+ 1. Set appropriate values in your personal config.psd1
+ 2. Open PowerShell with appropriate execution policy.
+ 3. Launch the script using .\Launch.ps1
+ 4. A GUI prompt will launch to select tools and input files/folders.
+ 5. Press Go.
+ 6. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
 
 
 ## Modules
@@ -83,5 +84,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: scaffold uploader starting with Tenable WAS.
- - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, refactor Tenable module to be a dropdown of scans like DD, test file for uploader.ps1 when finished
+ - Current tasks: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD)
+ - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module,

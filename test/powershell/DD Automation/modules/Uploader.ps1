@@ -36,9 +36,10 @@ function Upload-DefectDojoScan {
         #'Content-Type' = 'multipart/form-data'
     }
     $form    = @{
-        test   = $TestId
-        scan_type = $ScanType
-        file      = Get-Item -Path $FilePath
+        test             = $TestId
+        scan_type        = $ScanType
+        file             = Get-Item -Path $FilePath
+        minimum_severity = 'Low'    
     }
 
 

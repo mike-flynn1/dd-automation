@@ -2,7 +2,7 @@
     .SYNOPSIS
         DD Automation GUI Launcher
     .DESCRIPTION
-        Provides a graphical interface to select tools, file paths, and debug mode for DD Automation.
+        Provides a graphical interface to select tools, file paths, and start DD Automation.
     #>
     
 Param()
