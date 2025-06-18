@@ -115,4 +115,4 @@ function Select-DefectDojoScans {
 }
 
 #DEBUG
-Select-DefectDojoScans -FilePath  "C:\Users\michael.flynn\AppData\Local\Temp\0a514d9e-7e2f-4bd5-9e22-e5044e94bc77-report.csv"
+#Select-DefectDojoScans -FilePath  "C:\Users\michael.flynn\AppData\Local\Temp\0a514d9e-7e2f-4bd5-9e22-e5044e94bc77-report.csv"

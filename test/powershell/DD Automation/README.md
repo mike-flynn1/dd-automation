@@ -3,8 +3,8 @@
  ## Overview
  This PowerShell-based toolset automates the export and import of security findings between various tools:
  - Tenable WAS → Defect Dojo
- - SonarQube → Defect Dojo
- - Burp Suite XML report parsing → Defect Dojo
+ - SonarQube → Defect Dojo (Not Implemented)
+ - Burp Suite XML report parsing → Defect Dojo (not Implemented)
 
  The solution is modular, extensible, and designed for easy addition of new tools (e.g., GitHub).
 
@@ -84,5 +84,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD)
- - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module,
+ - Current tasks: reupload burp scan given directory
+ - Future: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD), Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module,

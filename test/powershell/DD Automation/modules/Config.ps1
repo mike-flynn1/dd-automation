@@ -161,4 +161,5 @@ function Save-Config {
         Throw "Failed to save configuration to $ConfigPath. Error: $_"
     }
 }
-Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')
+
+#Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')
