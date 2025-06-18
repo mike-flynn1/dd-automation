@@ -67,11 +67,15 @@ function Export-TenableWASScan {
     $fileName = "$ScanId-report.csv"
     $outFile = Join-Path -Path $tempPath -ChildPath $fileName
 
-    Invoke-RestMethod -Method GET -Uri $reportUri -Headers $headers -OutFile $outFile
+        $headers = @{ 
+        "X-ApiKeys"    = "accessKey=$accessKey;secretKey=$secretKey" 
+        "Accept"       = "application/json"
+    }
+    Invoke-RestMethod -Method GET -Uri $reportUri -Headers $headers -OutFile $outFile -ContentType 'text/csv' -UseBasicParsing
 
     Write-Log -Message "Tenable WAS report saved to $outFile" -Level 'INFO'
     return $outFile
 }
 
 #DEBUG
-#Export-TenableWASScan -ScanId $ScanId
+Export-TenableWASScan -ScanId 06f8c725-d9ed-4473-a063-be73b5ace9ca
