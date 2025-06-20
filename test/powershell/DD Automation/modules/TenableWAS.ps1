@@ -78,4 +78,4 @@ function Export-TenableWASScan {
 }
 
 #DEBUG
-Export-TenableWASScan -ScanId 06f8c725-d9ed-4473-a063-be73b5ace9ca
+#Export-TenableWASScan -ScanId 06f8c725-d9ed-4473-a063-be73b5ace9ca

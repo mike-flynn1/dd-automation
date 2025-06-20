@@ -85,4 +85,4 @@
 
  ###
  - Current tasks: reupload burp scan given directory
- - Future: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD), Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module,
+ - Future: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD), Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, add severity picker to config file, keep window open until user clicks OK

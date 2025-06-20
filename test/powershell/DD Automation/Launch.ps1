@@ -357,7 +357,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                             . $uploaderPath
                             
                             # Ensure file path is explicitly converted to string
-                            $filePathString = $exportedFile.ToString()
+                            $filePathString = [string]$exportedFile
 
                             # Upload the file to DefectDojo using the Select-DefectDojoScans function
                             Select-DefectDojoScans -FilePath $filePathString
