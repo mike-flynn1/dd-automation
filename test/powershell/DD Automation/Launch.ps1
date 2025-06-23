@@ -275,7 +275,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     
     # Buttons
     $btnLaunch = New-Object System.Windows.Forms.Button
-    $btnLaunch.Text = 'Launch'
+    $btnLaunch.Text = 'GO'
     $btnLaunch.Location = New-Object System.Drawing.Point(420, 620)
     $btnLaunch.Size = New-Object System.Drawing.Size(80, 30)
     $form.Controls.Add($btnLaunch)
@@ -418,10 +418,10 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
             $chkBoxes[$tool].Checked = [bool]$initialConfig.Tools[$tool]
         }
     }
-    $chkDebug.Checked = [bool]$initialConfig.Debug
-    if ($initialConfig.Paths.ContainsKey('BurpSuiteXmlFolder')) {
-        $txtBurp.Text = $initialConfig.Paths.BurpSuiteXmlFolder
-    }
+    # $chkDebug.Checked = [bool]$initialConfig.Debug
+    # if ($initialConfig.Paths.ContainsKey('BurpSuiteXmlFolder')) {
+    #     $txtBurp.Text = $initialConfig.Paths.BurpSuiteXmlFolder
+    # }
     # Prepopulate TenableWAS Scan ID
     if ($initialConfig.TenableWAS -and $initialConfig.TenableWAS.ScanId) {
         $txtTenable.Text = $initialConfig.TenableWAS.ScanId

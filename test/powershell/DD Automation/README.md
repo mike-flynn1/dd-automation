@@ -45,7 +45,7 @@
  
 ## Folder Structure
  ```
- ├── config/         # User-specific config PSd1 files
+ ├── config/         # User-specific config PSD1 files
  ├── logs/           # Timestamped log files
  ├── modules/        # Individual function .ps1 files
  ├── Examples/       # Example input files (ignored by Git)
@@ -76,7 +76,7 @@
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
  | DefectDojo    | Done    | Fetch and list products, engagements, and tests via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
- | Uploader      | Work IP | Upload all files to DD via API                     |
+ | Uploader      | Done    | Upload all files to DD via API                     |
 
  ## Roadmap / Next Steps
  1. Implement core function scaffolds in `modules/`.
@@ -84,5 +84,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: reupload burp scan given directory
- - Future: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD), Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, add severity picker to config file, keep window open until user clicks OK
+ - Current tasks: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD) 
+ - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, add severity picker to config file, keep window open until user clicks OK, reupload burp scan given directory (or use external tooling)
