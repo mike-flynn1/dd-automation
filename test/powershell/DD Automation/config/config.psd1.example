@@ -30,5 +30,6 @@
         TenableWASTestId  = 0  # Enter the DefectDojo test Id for TenableWAS
         SonarQubeTestId   = 0  # Enter the DefectDojo test Id for SonarQube
         BurpSuiteTestId   = 0  # Enter the DefectDojo test Id for BurpSuite
+        MinimumSeverity   = 'Low'  # Enter the minimum severity to upload
     }
 }

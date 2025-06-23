@@ -39,7 +39,7 @@ function Upload-DefectDojoScan {
         test             = $TestId
         scan_type        = $ScanType
         file             = Get-Item -Path $FilePath
-        minimum_severity = 'Low'    
+        minimum_severity = $config.DefectDojo.MinimumSeverity
     }
 
 
@@ -115,4 +115,4 @@ function Select-DefectDojoScans {
 }
 
 #DEBUG
-#Select-DefectDojoScans -FilePath  "C:\Users\michael.flynn\AppData\Local\Temp\06f8c725-d9ed-4473-a063-be73b5ace9ca-report.csv"
+#Select-DefectDojoScans -FilePath  "C:\Users\michael.flynn\AppData\Local\Temp\316915dd-62e4-4989-b84f-867a97132d92-report.csv"
