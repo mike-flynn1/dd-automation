@@ -58,7 +58,7 @@ function Export-TenableWASScan {
     Invoke-RestMethod -Method Put -Uri $reportUri -Headers $headers -UseBasicParsing
 
     # Allow time for report generation
-    Start-Sleep -Seconds 5
+    Start-Sleep -Seconds 2
 
     # Download the generated report via GET
     Write-Log -Message "Scan report URL: $reportUri" -Level 'INFO'
