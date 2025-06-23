@@ -35,7 +35,9 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     . (Join-Path $scriptDir 'modules\Config.ps1')
     . (Join-Path $scriptDir 'TenableWAS.ps1')
     . (Join-Path $scriptDir 'EnvValidator.ps1')
+
     . (Join-Path $scriptDir 'DefectDojo.ps1')
+    . (Join-Path $scriptDir 'modules\Sonarqube.ps1')
 
     #DEBUG
     Get-Command -Module Logging | Format-Table -AutoSize
@@ -369,8 +371,23 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                 } catch {
                     Write-GuiMessage "TenableWAS scan export failed: $_" 'ERROR'
                 }
-            }
 
+            }
+            
+            if ($config.Tools.SonarQube) {
+                Write-GuiMessage "Processing SonarQube scan..."
+                try {
+                    $sonarPath = Join-Path $scriptDir 'modules\Sonarqube.ps1'
+                    . $sonarPath
+                    $apiScanConfig = $config.DefectDojo.APIScanConfig
+                    $testId = $config.DefectDojo.SonarQubeTestId
+                    Invoke-SonarQubeProcessing -ApiScanConfiguration $apiScanConfig -TestId $testId
+                    Write-GuiMessage "SonarQube processing completed for test $testId" 'INFO'
+                } catch {
+                    Write-GuiMessage "SonarQube processing failed: $_" 'ERROR'
+                }
+            }
+    
             # Save DefectDojo selections and write back to config file if selected
             if ($config.Tools.DefectDojo) {
                 if ($cmbDDProduct.SelectedItem -and $cmbDDEng.SelectedItem `
