@@ -219,6 +219,19 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     $cmbDDTestBurp.Enabled = $false
     $form.Controls.Add($cmbDDTestBurp)
 
+    # Add DefectDojo severity selector
+    $lblDDSeverity = New-Object System.Windows.Forms.Label
+    $lblDDSeverity.Text = 'Minimum Severity:'
+    $lblDDSeverity.AutoSize = $true
+    $lblDDSeverity.Location = New-Object System.Drawing.Point(10, 390)
+    $form.Controls.Add($lblDDSeverity)
+    $cmbDDSeverity = New-Object System.Windows.Forms.ComboBox
+    $cmbDDSeverity.DropDownStyle = 'DropDownList'
+    $cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
+    $cmbDDSeverity.Location = New-Object System.Drawing.Point(150, 388)
+    $cmbDDSeverity.Size = New-Object System.Drawing.Size(220, 20)
+    $form.Controls.Add($cmbDDSeverity)
+
     # Enable/disable test selectors based on tool selection
     $chkBoxes['TenableWAS'].Add_CheckedChanged({ $cmbDDTestTenable.Enabled = $chkBoxes['TenableWAS'].Checked -and $cmbDDTestTenable.Items.Count -gt 0 })
     $chkBoxes['SonarQube'].Add_CheckedChanged({  $cmbDDTestSonar.Enabled  = $chkBoxes['SonarQube'].Checked  -and $cmbDDTestSonar.Items.Count  -gt 0 })
@@ -430,14 +443,17 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                         SonarQubeTestId   = $cmbDDTestSonar.SelectedItem.Id
                         BurpSuiteTestId   = $cmbDDTestBurp.SelectedItem.Id
                         APIScanConfigId   = $cmbDDApiScan.SelectedItem.Id
-                    }
+                        MinimumSeverity   = $cmbDDSeverity.SelectedItem
+}
                     Write-GuiMessage "Selected DefectDojo Product: $($cmbDDProduct.SelectedItem.Name) (Id: $($cmbDDProduct.SelectedItem.Id))"
                     Write-GuiMessage "Selected Engagement: $($cmbDDEng.SelectedItem.Name) (Id: $($cmbDDEng.SelectedItem.Id))"
                     Write-GuiMessage "Selected TenableWAS Test: $($cmbDDTestTenable.SelectedItem.Name) (Id: $($cmbDDTestTenable.SelectedItem.Id))"
                     Write-GuiMessage "Selected SonarQube Test: $($cmbDDTestSonar.SelectedItem.Name) (Id: $($cmbDDTestSonar.SelectedItem.Id))"
                     Write-GuiMessage "Selected BurpSuite Test: $($cmbDDTestBurp.SelectedItem.Name) (Id: $($cmbDDTestBurp.SelectedItem.Id))"
                     Write-GuiMessage "Selected API Scan Configuration: $($cmbDDApiScan.SelectedItem.Name) (Id: $($cmbDDApiScan.SelectedItem.Id))"
+                    Write-GuiMessage "Selected Minimum Severity: $($cmbDDSeverity.SelectedItem)"
                     Write-GuiMessage 'Saving DefectDojo selections to config file...'
+
                     try {
                         Save-Config -Config $config
                         Write-GuiMessage 'DefectDojo configuration saved.'
@@ -534,7 +550,16 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                 Write-GuiMessage "Failed to prepopulate DefectDojo BurpSuite test: $_" 'ERROR'
             }
         }
+        if ($initialConfig.DefectDojo.MinimumSeverity) {
+            try {
+            $cmbDDSeverity.SelectedItem = $initialConfig.DefectDojo.MinimumSeverity
+            } catch {
+                Write-GuiMessage "Failed to prepopulate DefectDojo minimum severity: $_" 'ERROR'
+            }
+        }
     }
     
-    # Show form
+
+
+# Show form
     [void]$form.ShowDialog()
