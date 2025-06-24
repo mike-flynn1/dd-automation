@@ -34,7 +34,7 @@ function Invoke-SonarQubeProcessing {
     }
     $form    = @{
         test                   = $TestId
-        scan_type              = 'SonarQube Scan'
+        scan_type              = 'SonarQube API Import'
         api_scan_configuration = $ApiScanConfiguration
         minimum_severity       = $config.DefectDojo.MinimumSeverity
     }
@@ -45,3 +45,6 @@ function Invoke-SonarQubeProcessing {
     Write-Log -Message "DefectDojo reimport-scan response: $($response | Out-String)" -Level 'INFO'
     return $response
 }
+
+# DEBUG
+#Invoke-SonarQubeProcessing -ApiScanConfiguration 1 -TestId 48
