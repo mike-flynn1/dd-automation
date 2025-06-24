@@ -37,7 +37,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     . (Join-Path $scriptDir 'EnvValidator.ps1')
 
     . (Join-Path $scriptDir 'DefectDojo.ps1')
-    . (Join-Path $scriptDir 'modules\Sonarqube.ps1')
+    . (Join-Path $scriptDir 'Sonarqube.ps1')
 
     #DEBUG
     Get-Command -Module Logging | Format-Table -AutoSize
@@ -138,7 +138,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     $txtTenable.Location = New-Object System.Drawing.Point(150, 178)
     $form.Controls.Add($txtTenable)
 
-    # DefectDojo selection: Product, Engagement, Test
+    # DefectDojo selection: Product, Engagement, Test, API Scan Configuration
     $lblDDProduct = New-Object System.Windows.Forms.Label
     $lblDDProduct.Text = 'DefectDojo Product:'
     $lblDDProduct.AutoSize = $true
@@ -164,6 +164,20 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     $cmbDDEng.Size = New-Object System.Drawing.Size(220, 20)
     $cmbDDEng.Enabled = $false
     $form.Controls.Add($cmbDDEng)
+
+    # Add DefectDojo API Scan Configuration selector
+    $lblDDApiScan = New-Object System.Windows.Forms.Label
+    $lblDDApiScan.Text = 'API Scan Config:'
+    $lblDDApiScan.AutoSize = $true
+    $lblDDApiScan.Location = New-Object System.Drawing.Point(10, 270)
+    $form.Controls.Add($lblDDApiScan)
+
+    $cmbDDApiScan = New-Object System.Windows.Forms.ComboBox
+    $cmbDDApiScan.DropDownStyle = 'DropDownList'
+    $cmbDDApiScan.Location = New-Object System.Drawing.Point(150, 268)
+    $cmbDDApiScan.Size = New-Object System.Drawing.Size(220, 20)
+    $cmbDDApiScan.Enabled = $false
+    $form.Controls.Add($cmbDDApiScan)
 
     # DefectDojo test selectors for each tool
     $lblDDTestTenable = New-Object System.Windows.Forms.Label
@@ -209,6 +223,20 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     $chkBoxes['TenableWAS'].Add_CheckedChanged({ $cmbDDTestTenable.Enabled = $chkBoxes['TenableWAS'].Checked -and $cmbDDTestTenable.Items.Count -gt 0 })
     $chkBoxes['SonarQube'].Add_CheckedChanged({  $cmbDDTestSonar.Enabled  = $chkBoxes['SonarQube'].Checked  -and $cmbDDTestSonar.Items.Count  -gt 0 })
     $chkBoxes['BurpSuite'].Add_CheckedChanged({ $cmbDDTestBurp.Enabled   = $chkBoxes['BurpSuite'].Checked -and $cmbDDTestBurp.Items.Count   -gt 0 })
+
+    # Load API Scan Configurations when SonarQube is enabled
+    if ($chkBoxes['SonarQube'].Checked) {
+        Write-GuiMessage 'Loading DefectDojo API scan configurations...'
+        try {
+            $apiConfigs = Get-DefectDojoApiScanConfigurations -ProductId 1
+            $cmbDDApiScan.Items.Clear()
+            foreach ($c in $apiConfigs) { $cmbDDApiScan.Items.Add($c) | Out-Null }
+            $cmbDDApiScan.DisplayMember = 'Name'; $cmbDDApiScan.ValueMember = 'Id'
+            $cmbDDApiScan.Enabled = $true
+        } catch {
+            Write-GuiMessage "Failed to load API scan configurations: $_" 'ERROR'
+        }
+    }
 
     # Load products when DefectDojo is enabled
     if ($chkBoxes['DefectDojo'].Checked) {
@@ -343,6 +371,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
             # Expose to session
             Set-Variable -Name Config -Scope Global -Value $config
 
+            # Process TenableWAS if enabled
             if ($config.Tools.TenableWAS) {
                 Write-GuiMessage "Starting TenableWAS scan export (Scan ID: $($config.TenableWAS.ScanId))"
                 try {
@@ -373,7 +402,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                 }
 
             }
-            
+            # Process SonarQube if enabled
             if ($config.Tools.SonarQube) {
                 Write-GuiMessage "Processing SonarQube scan..."
                 try {
@@ -390,7 +419,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     
             # Save DefectDojo selections and write back to config file if selected
             if ($config.Tools.DefectDojo) {
-                if ($cmbDDProduct.SelectedItem -and $cmbDDEng.SelectedItem `
+                if ($cmbDDProduct.SelectedItem -and $cmbDDEng.SelectedItem -and $cmbDDApiScan.SelectedItem `
                     -and ((-not $config.Tools.TenableWAS) -or $cmbDDTestTenable.SelectedItem) `
                     -and ((-not $config.Tools.SonarQube)  -or $cmbDDTestSonar.SelectedItem) `
                     -and ((-not $config.Tools.BurpSuite) -or $cmbDDTestBurp.SelectedItem)) {
@@ -400,12 +429,14 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                         TenableWASTestId  = $cmbDDTestTenable.SelectedItem.Id
                         SonarQubeTestId   = $cmbDDTestSonar.SelectedItem.Id
                         BurpSuiteTestId   = $cmbDDTestBurp.SelectedItem.Id
+                        APIScanConfigId   = $cmbDDApiScan.SelectedItem.Id
                     }
                     Write-GuiMessage "Selected DefectDojo Product: $($cmbDDProduct.SelectedItem.Name) (Id: $($cmbDDProduct.SelectedItem.Id))"
                     Write-GuiMessage "Selected Engagement: $($cmbDDEng.SelectedItem.Name) (Id: $($cmbDDEng.SelectedItem.Id))"
                     Write-GuiMessage "Selected TenableWAS Test: $($cmbDDTestTenable.SelectedItem.Name) (Id: $($cmbDDTestTenable.SelectedItem.Id))"
                     Write-GuiMessage "Selected SonarQube Test: $($cmbDDTestSonar.SelectedItem.Name) (Id: $($cmbDDTestSonar.SelectedItem.Id))"
                     Write-GuiMessage "Selected BurpSuite Test: $($cmbDDTestBurp.SelectedItem.Name) (Id: $($cmbDDTestBurp.SelectedItem.Id))"
+                    Write-GuiMessage "Selected API Scan Configuration: $($cmbDDApiScan.SelectedItem.Name) (Id: $($cmbDDApiScan.SelectedItem.Id))"
                     Write-GuiMessage 'Saving DefectDojo selections to config file...'
                     try {
                         Save-Config -Config $config
@@ -417,7 +448,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                     Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
                 }
             }
-            Write-GuiMessage 'Configuration stored in global $Config. Closing GUI.'
+            Write-GuiMessage 'Configuration stored in global Config. Closing GUI.'
             Start-Sleep -Milliseconds 500
             $form.Close()
         }
@@ -477,6 +508,14 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
                 if ($sel) { $cmbDDTestTenable.SelectedItem = $sel }
             } catch {
                 Write-GuiMessage "Failed to prepopulate DefectDojo TenableWAS test: $_" 'ERROR'
+            }
+        }
+        if ($initialConfig.DefectDojo.APIScanConfigId) {
+            try {
+                $sel = $cmbDDApiScan.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.APIScanConfigId }
+                if ($sel) { $cmbDDApiScan.SelectedItem = $sel }
+            } catch {
+                Write-GuiMessage "Failed to prepopulate DefectDojo API scan config: $_" 'ERROR'
             }
         }
         if ($initialConfig.DefectDojo.SonarQubeTestId) {

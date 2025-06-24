@@ -74,7 +74,7 @@
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
  | SonarQube     | Pending | Fetch issues via SonarQube API - or use existing DD Integration                    |
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
- | DefectDojo    | Done    | Fetch and list products, engagements, and tests via API       |
+ | DefectDojo    | Done    | Fetch and list products, engagements, tests, and product API scan configurations via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Done    | Upload all files to DD via API                     |
 
@@ -84,5 +84,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: implement first pass of SonarQube reupload, (possible simple call to reupload of sonarqube API already setup in DD) 
+ - Current tasks: fix API config entries saved to config file
  - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, keep window open until user clicks OK, reupload burp scan given directory (or use external tooling)
