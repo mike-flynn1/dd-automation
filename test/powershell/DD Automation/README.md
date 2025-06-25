@@ -3,7 +3,7 @@
  ## Overview
  This PowerShell-based toolset automates the export and import of security findings between various tools:
  - Tenable WAS → Defect Dojo
- - SonarQube → Defect Dojo (Not Implemented)
+ - SonarQube → Defect Dojo (reimport direct from Defect Dojo)
  - Burp Suite XML report parsing → Defect Dojo (not Implemented)
 
  The solution is modular, extensible, and designed for easy addition of new tools (e.g., GitHub).
@@ -11,7 +11,7 @@
  ## Prerequisites
  - Windows 10 or 11
  - PowerShell 7.2 or later
- - Network access to APIs (Defect Dojo, Tenable WAS, SonarQube)
+ - Network access to APIs (Defect Dojo, Tenable WAS)
  - Environment variables set for API keys and credentials
  - Pester >5.0 if running tests (DOES NOT CURRENTLY WORK, blocked by AV)
  - Tool Knowledge 
@@ -23,7 +23,6 @@
 - `DOJO_API_KEY` for Defect Dojo
 - `TENWAS_API_KEY` for Tenable WAS (Access Key)
 - `TENWAS_API_SECRET` for Tenable WAS (Secret Key)
-- `SONARQUBE_API_TOKEN` for SonarQube
  3.Create a custom `config\yourconfig.psd1` file with tool-specific settings / URLs.
 
  ## Configuration
@@ -33,7 +32,6 @@
  | DOJO_API_KEY        | API key for Defect Dojo        |
  | TENWAS_API_KEY      | API access key for Tenable WAS |
  | TENWAS_API_SECRET   | API secret key for Tenable WAS |
- | SONARQUBE_API_TOKEN | API token for SonarQube        |
 
  ## Config File
  Manual Inputs: 
@@ -84,5 +82,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: fix API config entries saved to config file
- - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, keep window open until user clicks OK, reupload burp scan given directory (or use external tooling)
+ - Current tasks: keep window open until user clicks OK
+ - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), guide user through adding env variables to user $PATH
