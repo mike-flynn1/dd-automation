@@ -253,7 +253,9 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
 
     # Enable/disable test selectors based on tool selection
     $chkBoxes['TenableWAS'].Add_CheckedChanged({ $cmbDDTestTenable.Enabled = $chkBoxes['TenableWAS'].Checked -and $cmbDDTestTenable.Items.Count -gt 0 })
-    $chkBoxes['SonarQube'].Add_CheckedChanged({  $cmbDDTestSonar.Enabled  = $chkBoxes['SonarQube'].Checked  -and $cmbDDTestSonar.Items.Count  -gt 0 })
+    $chkBoxes['SonarQube'].Add_CheckedChanged({  $cmbDDTestSonar.Enabled  = $chkBoxes['SonarQube'].Checked  -and $cmbDDTestSonar.Items.Count  -gt 0 
+                                                 $cmbDDApiScan.Enabled = $chkBoxes['SonarQube'].Checked -and $cmbDDApiScan.Items.Count -gt 0
+                                        })
     $chkBoxes['BurpSuite'].Add_CheckedChanged({ $cmbDDTestBurp.Enabled   = $chkBoxes['BurpSuite'].Checked -and $cmbDDTestBurp.Items.Count   -gt 0 })
 
     # Load API Scan Configurations when SonarQube is enabled
