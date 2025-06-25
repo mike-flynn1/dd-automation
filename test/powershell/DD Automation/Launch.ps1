@@ -55,6 +55,25 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
         [System.Windows.Forms.MessageBox]::Show("Environment validation failed: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
         exit 1
     }
+
+    function Write-GuiMessage {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO','WARNING','ERROR')]
+        [string]$Level = 'INFO'
+    )
+    try {
+    Write-Log -Message $Message -Level $Level
+    }
+    catch {
+       # Fallback: Write to console if log not initialized
+       Write-Warning "Log file not initialized. Message: $Message"
+    }
+    $timestamp = (Get-Date -Format 'HH:mm:ss')
+    $lstStatus.Items.Add("$timestamp [$Level] $Message") | Out-Null
+    }
+    # Initial GUI status
+    Write-GuiMessage "DD Automation Launcher started."
     
     # Create form
     $form = New-Object System.Windows.Forms.Form
@@ -238,15 +257,24 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     $chkBoxes['BurpSuite'].Add_CheckedChanged({ $cmbDDTestBurp.Enabled   = $chkBoxes['BurpSuite'].Checked -and $cmbDDTestBurp.Items.Count   -gt 0 })
 
     # Load API Scan Configurations when SonarQube is enabled
+    # Some issues here with productID, loads all if nothing provided? Debug later
     if ($chkBoxes['SonarQube'].Checked) {
         Write-GuiMessage 'Loading DefectDojo API scan configurations...'
         try {
-            $apiConfigs = Get-DefectDojoApiScanConfigurations -ProductId 1
+            $config = Get-Config
+            try {
+                $apiConfigs = Get-DefectDojoApiScanConfigurations -ProductId $config.DefectDojo.APIScanConfigID
+            }
+            catch {
+                Write-GuiMessage "API scan configurations not yet set. Continuing.."
+
+            }
             $cmbDDApiScan.Items.Clear()
             foreach ($c in $apiConfigs) { $cmbDDApiScan.Items.Add($c) | Out-Null }
             $cmbDDApiScan.DisplayMember = 'Name'; $cmbDDApiScan.ValueMember = 'Id'
             $cmbDDApiScan.Enabled = $true
-        } catch {
+        }
+        catch {
             Write-GuiMessage "Failed to load API scan configurations: $_" 'ERROR'
         }
     }
@@ -329,24 +357,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     $btnCancel.Size = New-Object System.Drawing.Size(80, 30)
     $form.Controls.Add($btnCancel)
       # Define log function for GUI
-    function Write-GuiMessage {
-        param(
-            [string]$Message,
-            [ValidateSet('INFO','WARNING','ERROR')]
-            [string]$Level = 'INFO'
-        )
-        try {
-        Write-Log -Message $Message -Level $Level
-        }
-        catch {
-            # Fallback: Write to console if log not initialized
-            Write-Warning "Log file not initialized. Message: $Message"
-        }
-        $timestamp = (Get-Date -Format 'HH:mm:ss')
-        $lstStatus.Items.Add("$timestamp [$Level] $Message") | Out-Null
-    }
-    # Initial GUI status
-    Write-GuiMessage "DD Automation Launcher started."
+
     
     # Button events
     $btnLaunch.Add_Click({
