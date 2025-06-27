@@ -5,6 +5,7 @@
  - Tenable WAS → Defect Dojo
  - SonarQube → Defect Dojo (reimport direct from Defect Dojo)
  - Burp Suite XML report parsing → Defect Dojo (not Implemented)
+ - GitHub CodeQL, Secret Scanning, DependaBot → Defect Dojo (not Implemented)
 
  The solution is modular, extensible, and designed for easy addition of new tools (e.g., GitHub).
 
@@ -23,6 +24,7 @@
 - `DOJO_API_KEY` for Defect Dojo
 - `TENWAS_API_KEY` for Tenable WAS (Access Key)
 - `TENWAS_API_SECRET` for Tenable WAS (Secret Key)
+- `GITHUB_PAT` for GitHub repos 
  3.Create a custom `config\yourconfig.psd1` file with tool-specific settings / URLs.
 
  ## Configuration
@@ -32,6 +34,7 @@
  | DOJO_API_KEY        | API key for Defect Dojo        |
  | TENWAS_API_KEY      | API access key for Tenable WAS |
  | TENWAS_API_SECRET   | API secret key for Tenable WAS |
+ | GITHUB_PAT          | API Key for GitHub             |
 
  ## Config File
  Manual Inputs: 
@@ -72,6 +75,7 @@
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
  | SonarQube     | Pending | Fetch issues via SonarQube API - or use existing DD Integration                    |
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
+ | GitHub        | Pending | Download all GH scan files for all repos (based on key) | 
  | DefectDojo    | Done    | Fetch and list products, engagements, tests, and product API scan configurations via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Done    | Upload all files to DD via API                     |
@@ -82,5 +86,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: keep window open until user clicks OK
- - Future: Remove debug mode (doing in local ps1 files), clean up log file logic, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), guide user through adding env variables to user $PATH
+ - Current tasks: Github File Downloads
+ - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), 
