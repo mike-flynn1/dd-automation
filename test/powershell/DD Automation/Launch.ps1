@@ -1,11 +1,14 @@
 <#
-    .SYNOPSIS
-        DD Automation GUI Launcher
-    .DESCRIPTION
-        Provides a graphical interface to select tools, file paths, and start DD Automation.
-    #>
-    
+.SYNOPSIS
+    DD Automation GUI Launcher
+.DESCRIPTION
+    Provides a graphical interface to select tools, file paths, and start DD Automation.
+    This script is a refactored version of Launch.ps1, organized with clearer functions and PowerShell best practices.
+#>
+
 Param()
+
+#region Setup and Validation
 
 # Enforce PowerShell 7.2+
 $minVersion = [version]"7.2"
@@ -27,552 +30,475 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     exit
 }
 
-    
-    $scriptDir = $PSScriptRoot
+# Define script root and load modules.
+# Dot-sourcing is used here because `using module` does not support dynamic paths (e.g., with $PSScriptRoot),
+# which is necessary for this script to be portable.
+$scriptDir = $PSScriptRoot
+. (Join-Path $scriptDir 'modules\Logging.ps1')
+. (Join-Path $scriptDir 'modules\Config.ps1')
+. (Join-Path $scriptDir 'TenableWAS.ps1')
+. (Join-Path $scriptDir 'EnvValidator.ps1')
+. (Join-Path $scriptDir 'DefectDojo.ps1')
+. (Join-Path $scriptDir 'Sonarqube.ps1')
+. (Join-Path $scriptDir 'Uploader.ps1')
 
-    # I know dot source is not best practice, but im lazy
-    . (Join-Path $scriptDir 'modules\Logging.ps1')
-    . (Join-Path $scriptDir 'modules\Config.ps1')
-    . (Join-Path $scriptDir 'TenableWAS.ps1')
-    . (Join-Path $scriptDir 'EnvValidator.ps1')
+# Initialize logging
+Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomationLauncher_Renewed.log' -Overwrite
+Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
 
-    . (Join-Path $scriptDir 'DefectDojo.ps1')
-    . (Join-Path $scriptDir 'Sonarqube.ps1')
+# Add Windows Forms types for GUI
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-    #DEBUG
-    Get-Command -Module Logging | Format-Table -AutoSize
-    
-    Initialize-Log -LogDirectory (Join-Path $scriptDir '..\logs') -LogFileName 'DDAutomationLauncher.log' -Overwrite
-    Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
+# Validate environment dependencies before launching GUI
+try {
+    Validate-Environment
+} catch {
+    [System.Windows.Forms.MessageBox]::Show("Environment validation failed: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+    exit 1
+}
 
-    # Add Windows Forms types
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
+#endregion Setup and Validation
 
-    try {
-        Validate-Environment
-    } catch {
-        [System.Windows.Forms.MessageBox]::Show("Environment validation failed: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-        exit 1
-    }
+#region GUI Helper Functions
 
-    function Write-GuiMessage {
+function Write-GuiMessage {
     param(
         [string]$Message,
         [ValidateSet('INFO','WARNING','ERROR')]
         [string]$Level = 'INFO'
     )
-    try {
     Write-Log -Message $Message -Level $Level
-    }
-    catch {
-       # Fallback: Write to console if log not initialized
-       Write-Warning "Log file not initialized. Message: $Message"
-    }
     $timestamp = (Get-Date -Format 'HH:mm:ss')
-    $lstStatus.Items.Add("$timestamp [$Level] $Message") | Out-Null
-    }
-    # Initial GUI status
-    Write-GuiMessage "DD Automation Launcher started."
-    
-    # Create form
-    $form = New-Object System.Windows.Forms.Form
+    $script:lstStatus.Items.Add("$timestamp [$Level] $Message") | Out-Null
+    # Auto-scroll to the latest message
+    $script:lstStatus.TopIndex = $script:lstStatus.Items.Count - 1
+}
+
+#endregion GUI Helper Functions
+
+#region GUI Creation
+
+function Initialize-GuiElements {
+    # Script-level scope allows these variables to be accessed by event handlers
+    $script:form = New-Object System.Windows.Forms.Form
+    $script:chkBoxes = @{}
+    $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo')
+
+    # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
     $form.Size = New-Object System.Drawing.Size(620, 700)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
-    
-    # Tools selection GroupBox
+
+    # Tools GroupBox
     $grpTools = New-Object System.Windows.Forms.GroupBox
     $grpTools.Text = 'Select Tools'
     $grpTools.Size = New-Object System.Drawing.Size(580, 100)
     $grpTools.Location = New-Object System.Drawing.Point(10, 10)
     $form.Controls.Add($grpTools)
-    
-    # Tool checkboxes
-    $tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo')
-    $chkBoxes = @{}
+
+    # Tool Checkboxes
     for ($i = 0; $i -lt $tools.Count; $i++) {
         $name = $tools[$i]
         $chk = New-Object System.Windows.Forms.CheckBox
         $chk.Text = $name
         $chk.AutoSize = $true
-        $xPos = 10 + ($i * 140)
-        $chk.Location = New-Object System.Drawing.Point($xPos, 20)
+        $chk.Location = New-Object System.Drawing.Point((10 + ($i * 140)), 20)
         $chk.Checked = $true
         $grpTools.Controls.Add($chk)
         $chkBoxes[$name] = $chk
     }
-    
-    # BurpSuite XML folder picker
-    $lblBurp = New-Object System.Windows.Forms.Label
-    $lblBurp.Text = 'BurpSuite XML Folder:'
-    $lblBurp.AutoSize = $true
-    $lblBurp.Location = New-Object System.Drawing.Point(10, 120)
-    $form.Controls.Add($lblBurp)
-    
-    $txtBurp = New-Object System.Windows.Forms.TextBox
-    $txtBurp.Size = New-Object System.Drawing.Size(370, 20)
-    $txtBurp.Location = New-Object System.Drawing.Point(150, 118)
-    $form.Controls.Add($txtBurp)
-    
-    $btnBrowse = New-Object System.Windows.Forms.Button
-    $btnBrowse.Text = 'Browse...'
-    $btnBrowse.Location = New-Object System.Drawing.Point(520, 115)
-    $btnBrowse.Size = New-Object System.Drawing.Size(80, 24)
-    $form.Controls.Add($btnBrowse)
-    
-    $folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    
-    $btnBrowse.Add_Click({
-        if ($folderDialog.ShowDialog() -eq 'OK') {
-            $txtBurp.Text = $folderDialog.SelectedPath
-        }
-    })
-    # Enable/disable BurpSuite picker based on selection
-    $txtBurp.Enabled = $chkBoxes['BurpSuite'].Checked
-    $btnBrowse.Enabled = $chkBoxes['BurpSuite'].Checked
-    $chkBoxes['BurpSuite'].Add_CheckedChanged({
-        $txtBurp.Enabled = $chkBoxes['BurpSuite'].Checked
-        $btnBrowse.Enabled = $chkBoxes['BurpSuite'].Checked
-    })
-    
-    # Debug mode checkbox
-    # $chkDebug = New-Object System.Windows.Forms.CheckBox
-    # $chkDebug.Text = 'Debug Mode'
-    # $chkDebug.AutoSize = $true
-    # $chkDebug.Location = New-Object System.Drawing.Point(10, 150)
-    # $form.Controls.Add($chkDebug)
-    
-    # TenableWAS Scan ID entry
-    $lblTenable = New-Object System.Windows.Forms.Label
-    $lblTenable.Text = 'TenableWAS Scan ID:'
-    $lblTenable.AutoSize = $true
-    $lblTenable.Location = New-Object System.Drawing.Point(10, 180)
-    $form.Controls.Add($lblTenable)
 
-    $txtTenable = New-Object System.Windows.Forms.TextBox
-    $txtTenable.Size = New-Object System.Drawing.Size(370, 20)
-    $txtTenable.Location = New-Object System.Drawing.Point(150, 178)
-    $form.Controls.Add($txtTenable)
+    # BurpSuite Controls
+    $lblBurp = New-Object System.Windows.Forms.Label -Property @{ Text = 'BurpSuite XML Folder:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 120) }
+    $script:txtBurp = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(370, 20); Location = New-Object System.Drawing.Point(150, 118) }
+    $script:btnBrowse = New-Object System.Windows.Forms.Button -Property @{ Text = 'Browse...'; Location = New-Object System.Drawing.Point(520, 115); Size = New-Object System.Drawing.Size(80, 24) }
+    $form.Controls.AddRange(@($lblBurp, $txtBurp, $btnBrowse))
 
-    # DefectDojo selection: Product, Engagement, Test, API Scan Configuration
-    $lblDDProduct = New-Object System.Windows.Forms.Label
-    $lblDDProduct.Text = 'DefectDojo Product:'
-    $lblDDProduct.AutoSize = $true
-    $lblDDProduct.Location = New-Object System.Drawing.Point(10, 210)
-    $form.Controls.Add($lblDDProduct)
+    # TenableWAS Controls
+    $lblTenable = New-Object System.Windows.Forms.Label -Property @{ Text = 'TenableWAS Scan ID:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 180) }
+    $script:txtTenable = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(370, 20); Location = New-Object System.Drawing.Point(150, 178) }
+    $form.Controls.AddRange(@($lblTenable, $txtTenable))
 
-    $cmbDDProduct = New-Object System.Windows.Forms.ComboBox
-    $cmbDDProduct.DropDownStyle = 'DropDownList'
-    $cmbDDProduct.Location = New-Object System.Drawing.Point(150, 208)
-    $cmbDDProduct.Size = New-Object System.Drawing.Size(220, 20)
-    $cmbDDProduct.Enabled = $false
-    $form.Controls.Add($cmbDDProduct)
-
-    $lblDDEng = New-Object System.Windows.Forms.Label
-    $lblDDEng.Text = 'Engagement:'
-    $lblDDEng.AutoSize = $true
-    $lblDDEng.Location = New-Object System.Drawing.Point(10, 240)
-    $form.Controls.Add($lblDDEng)
-
-    $cmbDDEng = New-Object System.Windows.Forms.ComboBox
-    $cmbDDEng.DropDownStyle = 'DropDownList'
-    $cmbDDEng.Location = New-Object System.Drawing.Point(150, 238)
-    $cmbDDEng.Size = New-Object System.Drawing.Size(220, 20)
-    $cmbDDEng.Enabled = $false
-    $form.Controls.Add($cmbDDEng)
-
-    # Add DefectDojo API Scan Configuration selector
-    $lblDDApiScan = New-Object System.Windows.Forms.Label
-    $lblDDApiScan.Text = 'API Scan Config:'
-    $lblDDApiScan.AutoSize = $true
-    $lblDDApiScan.Location = New-Object System.Drawing.Point(10, 270)
-    $form.Controls.Add($lblDDApiScan)
-
-    $cmbDDApiScan = New-Object System.Windows.Forms.ComboBox
-    $cmbDDApiScan.DropDownStyle = 'DropDownList'
-    $cmbDDApiScan.Location = New-Object System.Drawing.Point(150, 268)
-    $cmbDDApiScan.Size = New-Object System.Drawing.Size(220, 20)
-    $cmbDDApiScan.Enabled = $false
-    $form.Controls.Add($cmbDDApiScan)
-
-    # DefectDojo test selectors for each tool
-    $lblDDTestTenable = New-Object System.Windows.Forms.Label
-    $lblDDTestTenable.Text = 'TenableWAS Test:'
-    $lblDDTestTenable.AutoSize = $true
-    $lblDDTestTenable.Location = New-Object System.Drawing.Point(10, 300)
-    $form.Controls.Add($lblDDTestTenable)
-
-    $cmbDDTestTenable = New-Object System.Windows.Forms.ComboBox
-    $cmbDDTestTenable.DropDownStyle = 'DropDownList'
-    $cmbDDTestTenable.Location = New-Object System.Drawing.Point(150, 298)
-    $cmbDDTestTenable.Size = New-Object System.Drawing.Size(220, 20)
-    $cmbDDTestTenable.Enabled = $false
-    $form.Controls.Add($cmbDDTestTenable)
-
-    $lblDDTestSonar = New-Object System.Windows.Forms.Label
-    $lblDDTestSonar.Text = 'SonarQube Test:'
-    $lblDDTestSonar.AutoSize = $true
-    $lblDDTestSonar.Location = New-Object System.Drawing.Point(10, 330)
-    $form.Controls.Add($lblDDTestSonar)
-
-    $cmbDDTestSonar = New-Object System.Windows.Forms.ComboBox
-    $cmbDDTestSonar.DropDownStyle = 'DropDownList'
-    $cmbDDTestSonar.Location = New-Object System.Drawing.Point(150, 328)
-    $cmbDDTestSonar.Size = New-Object System.Drawing.Size(220, 20)
-    $cmbDDTestSonar.Enabled = $false
-    $form.Controls.Add($cmbDDTestSonar)
-
-    $lblDDTestBurp = New-Object System.Windows.Forms.Label
-    $lblDDTestBurp.Text = 'BurpSuite Test:'
-    $lblDDTestBurp.AutoSize = $true
-    $lblDDTestBurp.Location = New-Object System.Drawing.Point(10, 360)
-    $form.Controls.Add($lblDDTestBurp)
-
-    $cmbDDTestBurp = New-Object System.Windows.Forms.ComboBox
-    $cmbDDTestBurp.DropDownStyle = 'DropDownList'
-    $cmbDDTestBurp.Location = New-Object System.Drawing.Point(150, 358)
-    $cmbDDTestBurp.Size = New-Object System.Drawing.Size(220, 20)
-    $cmbDDTestBurp.Enabled = $false
-    $form.Controls.Add($cmbDDTestBurp)
-
-    # Add DefectDojo severity selector
-    $lblDDSeverity = New-Object System.Windows.Forms.Label
-    $lblDDSeverity.Text = 'Minimum Severity:'
-    $lblDDSeverity.AutoSize = $true
-    $lblDDSeverity.Location = New-Object System.Drawing.Point(10, 390)
-    $form.Controls.Add($lblDDSeverity)
-    $cmbDDSeverity = New-Object System.Windows.Forms.ComboBox
-    $cmbDDSeverity.DropDownStyle = 'DropDownList'
-    $cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
-    $cmbDDSeverity.Location = New-Object System.Drawing.Point(150, 388)
-    $cmbDDSeverity.Size = New-Object System.Drawing.Size(220, 20)
-    $form.Controls.Add($cmbDDSeverity)
-
-    # Enable/disable test selectors based on tool selection
-    $chkBoxes['TenableWAS'].Add_CheckedChanged({ $cmbDDTestTenable.Enabled = $chkBoxes['TenableWAS'].Checked -and $cmbDDTestTenable.Items.Count -gt 0 })
-    $chkBoxes['SonarQube'].Add_CheckedChanged({  $cmbDDTestSonar.Enabled  = $chkBoxes['SonarQube'].Checked  -and $cmbDDTestSonar.Items.Count  -gt 0 
-                                                 $cmbDDApiScan.Enabled = $chkBoxes['SonarQube'].Checked -and $cmbDDApiScan.Items.Count -gt 0
-                                        })
-    $chkBoxes['BurpSuite'].Add_CheckedChanged({ $cmbDDTestBurp.Enabled   = $chkBoxes['BurpSuite'].Checked -and $cmbDDTestBurp.Items.Count   -gt 0 })
-
-    # Load API Scan Configurations when SonarQube is enabled
-    # Some issues here with productID, loads all if nothing provided? Debug later
-    if ($chkBoxes['SonarQube'].Checked) {
-        Write-GuiMessage 'Loading DefectDojo API scan configurations...'
-        try {
-            $config = Get-Config
-            try {
-                $apiConfigs = Get-DefectDojoApiScanConfigurations -ProductId $config.DefectDojo.APIScanConfigID
-            }
-            catch {
-                Write-GuiMessage "API scan configurations not yet set. Continuing.."
-
-            }
-            $cmbDDApiScan.Items.Clear()
-            foreach ($c in $apiConfigs) { $cmbDDApiScan.Items.Add($c) | Out-Null }
-            $cmbDDApiScan.DisplayMember = 'Name'; $cmbDDApiScan.ValueMember = 'Id'
-            $cmbDDApiScan.Enabled = $true
-        }
-        catch {
-            Write-GuiMessage "Failed to load API scan configurations: $_" 'ERROR'
-        }
+    # DefectDojo Controls
+    $ddControls = @{
+        lblDDProduct      = [Tuple]::Create('DefectDojo Product:', 210)
+        lblDDEng          = [Tuple]::Create('Engagement:', 240)
+        lblDDApiScan      = [Tuple]::Create('API Scan Config:', 270)
+        lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 300)
+        lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 330)
+        lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 360)
+        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 390)
     }
 
-    # Load products when DefectDojo is enabled
-    if ($chkBoxes['DefectDojo'].Checked) {
+    foreach ($name in $ddControls.Keys) {
+        $label = New-Object System.Windows.Forms.Label -Property @{ Text = $ddControls[$name].Item1; AutoSize = $true; Location = New-Object System.Drawing.Point(10, $ddControls[$name].Item2) }
+        $comboName = $name.Replace('lblDD','cmbDD')
+        $combobox = New-Object System.Windows.Forms.ComboBox -Property @{ DropDownStyle = 'DropDownList'; Location = New-Object System.Drawing.Point(150, ($ddControls[$name].Item2 - 2)); Size = New-Object System.Drawing.Size(220, 20); Enabled = $false }
+        $form.Controls.AddRange(@($label, $combobox))
+        Set-Variable -Name $comboName -Scope Script -Value $combobox
+    }
+    $script:cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
+
+    # Status ListBox
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 180); Location = New-Object System.Drawing.Point(10, 420) }
+    $form.Controls.Add($lstStatus)
+
+    # Action Buttons
+    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(420, 620); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(520, 620); Size = New-Object System.Drawing.Size(80, 30) }
+    
+    # Add completion message label
+    $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
+        Text = ""; 
+        Location = New-Object System.Drawing.Point(10, 625); 
+        Size = New-Object System.Drawing.Size(400, 25);
+        Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
+        ForeColor = [System.Drawing.Color]::Green;
+        Visible = $false
+    }
+    
+    $form.Controls.AddRange(@($btnLaunch, $btnCancel, $script:lblComplete))
+}
+
+#endregion GUI Creation
+
+#region Event Handlers
+
+function Register-EventHandlers {
+    # Tool selection checkboxes
+    $chkBoxes['BurpSuite'].Add_CheckedChanged({
+        $script:txtBurp.Enabled = $this.Checked
+        $script:btnBrowse.Enabled = $this.Checked
+        $script:cmbDDTestBurp.Enabled = $this.Checked -and $script:cmbDDTestBurp.Items.Count -gt 0
+    })
+    $chkBoxes['TenableWAS'].Add_CheckedChanged({ $script:cmbDDTestTenable.Enabled = $this.Checked -and $script:cmbDDTestTenable.Items.Count -gt 0 })
+    $chkBoxes['SonarQube'].Add_CheckedChanged({
+        $script:cmbDDTestSonar.Enabled = $this.Checked -and $script:cmbDDTestSonar.Items.Count -gt 0
+        $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
+    })
+
+    # Browse for BurpSuite folder
+    $btnBrowse.Add_Click({
+        $folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        if ($folderDialog.ShowDialog() -eq 'OK') {
+            $script:txtBurp.Text = $folderDialog.SelectedPath
+        }
+    })
+
+    # DefectDojo dropdowns
+    $cmbDDProduct.Add_SelectedIndexChanged({ Handle-ProductChange })
+    $cmbDDEng.Add_SelectedIndexChanged({ Handle-EngagementChange })
+
+    # Main action buttons
+    $btnLaunch.Add_Click({ Invoke-Automation })
+    $btnCancel.Text = "Close"  # Rename to "Close" for clarity
+    $btnCancel.Add_Click({ $script:form.Close() })
+}
+
+function Handle-ProductChange {
+    $selectedProduct = $script:cmbDDProduct.SelectedItem
+    if (-not $selectedProduct) { return }
+
+    Write-GuiMessage "Loading engagements for product $($selectedProduct.Name)..."
+    try {
+        $engagements = Get-DefectDojoEngagements -ProductId $selectedProduct.Id
+        $script:cmbDDEng.Items.Clear()
+        if ($engagements) {
+            foreach ($e in $engagements) { $script:cmbDDEng.Items.Add($e) | Out-Null }
+        }
+        $script:cmbDDEng.DisplayMember = 'Name'; $script:cmbDDEng.ValueMember = 'Id'
+        $script:cmbDDEng.Enabled = $true
+
+        # Clear subsequent dropdowns
+        @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp) | ForEach-Object {
+            $_.Enabled = $false; $_.Items.Clear()
+        }
+    } catch {
+        Write-GuiMessage "Failed to load engagements: $_" 'ERROR'
+    }
+}
+
+function Handle-EngagementChange {
+    $selectedEngagement = $script:cmbDDEng.SelectedItem
+    if (-not $selectedEngagement) { return }
+
+    Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
+    try {
+        $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
+        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp)) {
+            $cmb.Items.Clear()
+            if ($tests) {
+                foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
+            }
+            $cmb.DisplayMember = 'Name'; $cmb.ValueMember = 'Id'
+        }
+
+        # Re-evaluate enabled state based on tool selection and if tests were found
+        $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
+        $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
+        $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
+
+        if (-not $tests) {
+            Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
+        }
+    } catch {
+        Write-GuiMessage "Failed to load tests: $_" 'ERROR'
+    }
+}
+
+#endregion Event Handlers
+
+#region Data Loading and Pre-population
+
+function Load-DefectDojoData {
+    if ($script:chkBoxes['DefectDojo'].Checked) {
         Write-GuiMessage 'Loading DefectDojo products...'
         try {
             $products = Get-DefectDojoProducts
-            $cmbDDProduct.Items.Clear()
-            foreach ($p in $products) { $cmbDDProduct.Items.Add($p) | Out-Null }
-            $cmbDDProduct.DisplayMember = 'Name'; $cmbDDProduct.ValueMember = 'Id'
-            $cmbDDProduct.Enabled = $true
+            $script:cmbDDProduct.Items.Clear()
+            foreach ($p in $products) { $script:cmbDDProduct.Items.Add($p) | Out-Null }
+            $script:cmbDDProduct.DisplayMember = 'Name'; $script:cmbDDProduct.ValueMember = 'Id'
+            $script:cmbDDProduct.Enabled = $true
         } catch {
             Write-GuiMessage "Failed to load DefectDojo products: $_" 'ERROR'
         }
     }
 
-    $cmbDDProduct.Add_SelectedIndexChanged({
-        $sel = $cmbDDProduct.SelectedItem
-        if ($sel) {
-            Write-GuiMessage "Loading engagements for product $($sel.Name)..."
-            try {
-                $engs = Get-DefectDojoEngagements -ProductId $sel.Id
-                $cmbDDEng.Items.Clear()
-                foreach ($e in $engs) { $cmbDDEng.Items.Add($e) | Out-Null }
-                $cmbDDEng.DisplayMember = 'Name'; $cmbDDEng.ValueMember = 'Id'
-                $cmbDDEng.Enabled = $true
-                $cmbDDTestTenable.Enabled = $false; $cmbDDTestTenable.Items.Clear()
-                $cmbDDTestSonar.Enabled  = $false; $cmbDDTestSonar.Items.Clear()
-                $cmbDDTestBurp.Enabled   = $false; $cmbDDTestBurp.Items.Clear()
-            } catch {
-                Write-GuiMessage "Failed to load engagements: $_" 'ERROR'
-            }
-        }
-    })
-
-    $cmbDDEng.Add_SelectedIndexChanged({
-        $selEng = $cmbDDEng.SelectedItem
-        if ($selEng) {
-            try {
-                Write-GuiMessage "Loading tests for engagement $($selEng.Name)..."
-                $tests = Get-DefectDojoTests -EngagementId $selEng.Id
-                foreach ($cmb in @($cmbDDTestTenable, $cmbDDTestSonar, $cmbDDTestBurp)) {
-                    $cmb.Items.Clear()
-                    if ($tests) {
-                        foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
-                    }
-                    $cmb.DisplayMember = 'Name'; $cmb.ValueMember = 'Id'
-                    $cmb.Enabled = ($tests -and $tests.Count -gt 0)
-                }
-                if (-not $chkBoxes['TenableWAS'].Checked) { $cmbDDTestTenable.Enabled = $false }
-                if (-not $chkBoxes['SonarQube'].Checked)  { $cmbDDTestSonar.Enabled  = $false }
-                if (-not $chkBoxes['BurpSuite'].Checked) { $cmbDDTestBurp.Enabled   = $false }
-                if (-not $tests -or $tests.Count -eq 0) {
-                    Write-GuiMessage "No DefectDojo tests found for engagement $($selEng.Name)." 'WARNING'
-                }
-            } catch {
-                Write-GuiMessage "Failed to load tests: $_" 'ERROR'
-            }
-        }
-    })
-
-    # Status ListBox
-    $lstStatus = New-Object System.Windows.Forms.ListBox
-    $lstStatus.Size = New-Object System.Drawing.Size(580, 180)
-    $lstStatus.Location = New-Object System.Drawing.Point(10, 420)
-    $form.Controls.Add($lstStatus)
-    
-    # Buttons
-    $btnLaunch = New-Object System.Windows.Forms.Button
-    $btnLaunch.Text = 'GO'
-    $btnLaunch.Location = New-Object System.Drawing.Point(420, 620)
-    $btnLaunch.Size = New-Object System.Drawing.Size(80, 30)
-    $form.Controls.Add($btnLaunch)
-    
-    $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Text = 'Cancel'
-    $btnCancel.Location = New-Object System.Drawing.Point(520, 620)
-    $btnCancel.Size = New-Object System.Drawing.Size(80, 30)
-    $form.Controls.Add($btnCancel)
-      # Define log function for GUI
-
-    
-    # Button events
-    $btnLaunch.Add_Click({
-
-           
-            try {
-            # Load existing config or example
+    if ($script:chkBoxes['SonarQube'].Checked) {
+        Write-GuiMessage 'Loading DefectDojo API scan configurations...'
+        try {
+            # This assumes a Product ID might be available in config for pre-loading.
+            # If not, Get-DefectDojoApiScanConfigurations should handle a null ProductId.
             $config = Get-Config
-            # Validate BurpSuite folder if selected
-            if ($chkBoxes['BurpSuite'].Checked -and -not (Test-Path -Path $txtBurp.Text)) {
-                [System.Windows.Forms.MessageBox]::Show("Please select a valid BurpSuite XML folder.","Validation Error",[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-                return
+            $apiConfigs = Get-DefectDojoApiScanConfigurations -ProductId $config.DefectDojo.APIScanConfigID
+            $script:cmbDDApiScan.Items.Clear()
+            if ($apiConfigs) {
+                foreach ($c in $apiConfigs) { $script:cmbDDApiScan.Items.Add($c) | Out-Null }
             }
-    
-            # Override based on GUI
-            foreach ($tool in $tools) {
-                $config.Tools[$tool] = $chkBoxes[$tool].Checked
-            }
-            if ($config.Tools.BurpSuite -and $txtBurp.Text) {
-                $config.Paths.BurpSuiteXmlFolder = $txtBurp.Text
-            }
-            $config.Debug = $chkDebug.Checked
-            # Capture TenableWAS Scan ID from GUI
-            if ($txtTenable.Text) {
-                if (-not $config.TenableWAS) { $config.TenableWAS = @{} }
-                $config.TenableWAS.ScanId = $txtTenable.Text
-            }
-    
-    
-            Write-GuiMessage "Selected Tools: $(($tools | Where-Object { $config.Tools[$_] }) -join ', ')"
-            if ($config.Tools.BurpSuite) {
-                Write-GuiMessage "BurpSuite XML folder: $($config.Paths.BurpSuiteXmlFolder)"
-            }
-    
-            # Expose to session
-            Set-Variable -Name Config -Scope Global -Value $config
-
-            # Process TenableWAS if enabled
-            if ($config.Tools.TenableWAS) {
-                Write-GuiMessage "Starting TenableWAS scan export (Scan ID: $($config.TenableWAS.ScanId))"
-                try {
-                    $exportedFile = Export-TenableWASScan -ScanId $config.TenableWAS.ScanId
-                    Start-Sleep -Seconds 5
-                    Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
-                    
-                    # Upload the exported file to DefectDojo if both TenableWAS and DefectDojo are enabled
-                    if ($config.Tools.DefectDojo) {
-                        Write-GuiMessage "Uploading TenableWAS scan report to DefectDojo..."
-                        try {
-                            # Import the Uploader module if not already loaded
-                            $uploaderPath = Join-Path $scriptDir 'Uploader.ps1'
-                            . $uploaderPath
-                            
-                            # Ensure file path is explicitly converted to string
-                            $filePathString = ([string]$exportedFile).Trim()
-
-                            # Upload the file to DefectDojo using the Select-DefectDojoScans function
-                            Select-DefectDojoScans -FilePath $filePathString
-                            Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo" 'INFO'
-                        } catch {
-                            Write-GuiMessage "Failed to upload TenableWAS scan report to DefectDojo: $_" 'ERROR'
-                        }
-                    }
-                } catch {
-                    Write-GuiMessage "TenableWAS scan export failed: $_" 'ERROR'
-                }
-
-            }
-            # Process SonarQube if enabled
-            if ($config.Tools.SonarQube) {
-                Write-GuiMessage "Processing SonarQube scan..."
-                try {
-                    $sonarPath = Join-Path $scriptDir 'modules\Sonarqube.ps1'
-                    . $sonarPath
-                    $apiScanConfig = $config.DefectDojo.APIScanConfig
-                    $testId = $config.DefectDojo.SonarQubeTestId
-                    Invoke-SonarQubeProcessing -ApiScanConfiguration $apiScanConfig -TestId $testId
-                    Write-GuiMessage "SonarQube processing completed for test $testId" 'INFO'
-                } catch {
-                    Write-GuiMessage "SonarQube processing failed: $_" 'ERROR'
-                }
-            }
-    
-            # Save DefectDojo selections and write back to config file if selected
-            if ($config.Tools.DefectDojo) {
-                if ($cmbDDProduct.SelectedItem -and $cmbDDEng.SelectedItem -and $cmbDDApiScan.SelectedItem `
-                    -and ((-not $config.Tools.TenableWAS) -or $cmbDDTestTenable.SelectedItem) `
-                    -and ((-not $config.Tools.SonarQube)  -or $cmbDDTestSonar.SelectedItem) `
-                    -and ((-not $config.Tools.BurpSuite) -or $cmbDDTestBurp.SelectedItem)) {
-                    $config.DefectDojo = @{ 
-                        ProductId         = $cmbDDProduct.SelectedItem.Id
-                        EngagementId      = $cmbDDEng.SelectedItem.Id
-                        TenableWASTestId  = $cmbDDTestTenable.SelectedItem.Id
-                        SonarQubeTestId   = $cmbDDTestSonar.SelectedItem.Id
-                        BurpSuiteTestId   = $cmbDDTestBurp.SelectedItem.Id
-                        APIScanConfigId   = $cmbDDApiScan.SelectedItem.Id
-                        MinimumSeverity   = $cmbDDSeverity.SelectedItem
+            $script:cmbDDApiScan.DisplayMember = 'Name'; $script:cmbDDApiScan.ValueMember = 'Id'
+            $script:cmbDDApiScan.Enabled = $true
+        } catch {
+            Write-GuiMessage "Failed to load API scan configurations: $_" 'ERROR'
+        }
+    }
 }
-                    Write-GuiMessage "Selected DefectDojo Product: $($cmbDDProduct.SelectedItem.Name) (Id: $($cmbDDProduct.SelectedItem.Id))"
-                    Write-GuiMessage "Selected Engagement: $($cmbDDEng.SelectedItem.Name) (Id: $($cmbDDEng.SelectedItem.Id))"
-                    Write-GuiMessage "Selected TenableWAS Test: $($cmbDDTestTenable.SelectedItem.Name) (Id: $($cmbDDTestTenable.SelectedItem.Id))"
-                    Write-GuiMessage "Selected SonarQube Test: $($cmbDDTestSonar.SelectedItem.Name) (Id: $($cmbDDTestSonar.SelectedItem.Id))"
-                    Write-GuiMessage "Selected BurpSuite Test: $($cmbDDTestBurp.SelectedItem.Name) (Id: $($cmbDDTestBurp.SelectedItem.Id))"
-                    Write-GuiMessage "Selected API Scan Configuration: $($cmbDDApiScan.SelectedItem.Name) (Id: $($cmbDDApiScan.SelectedItem.Id))"
-                    Write-GuiMessage "Selected Minimum Severity: $($cmbDDSeverity.SelectedItem)"
-                    Write-GuiMessage 'Saving DefectDojo selections to config file...'
 
-                    try {
-                        Save-Config -Config $config
-                        Write-GuiMessage 'DefectDojo configuration saved.'
-                    } catch {
-                        Write-GuiMessage "Failed to save DefectDojo configuration: $_" 'ERROR'
+function Prepopulate-FormFromConfig {
+    param([hashtable]$Config)
+
+    Write-GuiMessage "Loading settings from config file..."
+    foreach ($tool in $script:tools) {
+        if ($Config.Tools.ContainsKey($tool)) {
+            $script:chkBoxes[$tool].Checked = [bool]$Config.Tools[$tool]
+        }
+    }
+
+    if ($Config.TenableWASScanId ) {
+        $script:txtTenable.Text = $Config.TenableWASScanId
+    }
+
+    if ($Config.Paths.ContainsKey('BurpSuiteXmlFolder')) {
+        $script:txtBurp.Text = $Config.Paths.BurpSuiteXmlFolder
+    }
+
+    if ($Config.DefectDojo) {
+        # Pre-select Product, which will trigger chained events for Engagements and Tests
+        if ($Config.DefectDojo.ProductId) {
+            $selectedProduct = $script:cmbDDProduct.Items | Where-Object { $_.Id -eq $Config.DefectDojo.ProductId }
+            if ($selectedProduct) {
+                $script:cmbDDProduct.SelectedItem = $selectedProduct
+                # Manually trigger dependent loads as events might not fire before form is shown
+                Handle-ProductChange
+                $script:form.Update() # Allow UI to update
+                
+                if ($Config.DefectDojo.EngagementId) {
+                    $selectedEngagement = $script:cmbDDEng.Items | Where-Object { $_.Id -eq $Config.DefectDojo.EngagementId }
+                    if ($selectedEngagement) {
+                        $script:cmbDDEng.SelectedItem = $selectedEngagement
+                        Handle-EngagementChange
+                        $script:form.Update()
                     }
-                } else {
-                    Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
                 }
             }
-            Write-GuiMessage 'Configuration stored in global Config. Closing GUI.'
-            Start-Sleep -Milliseconds 500
-            $form.Close()
         }
         
-        catch {
-            Write-GuiMessage "Error: $_" 'ERROR'
+        # Pre-select stand-alone items
+        if ($Config.DefectDojo.APIScanConfigId) {
+            $selectedApiConfig = $script:cmbDDApiScan.Items | Where-Object { $_.Id -eq $Config.DefectDojo.APIScanConfigId }
+            if ($selectedApiConfig) { $script:cmbDDApiScan.SelectedItem = $selectedApiConfig }
         }
-    })
+        if ($Config.DefectDojo.MinimumSeverity) {
+            $script:cmbDDSeverity.SelectedItem = $Config.DefectDojo.MinimumSeverity
+        }
+    }
+    Write-GuiMessage "Pre-population complete."
+}
+
+
+#endregion Data Loading and Pre-population
+
+#region Main Automation Logic
+
+function Invoke-Automation {
+    try {
+        # Disable the launch button while processing
+        $script:btnLaunch.Enabled = $false
+        $script:lblComplete.Visible = $false
+        
+        $config = Get-Config
+
+        # Validate GUI inputs
+        if ($script:chkBoxes['BurpSuite'].Checked -and -not (Test-Path -Path $script:txtBurp.Text -PathType Container)) {
+            [System.Windows.Forms.MessageBox]::Show("Please select a valid BurpSuite XML folder.", "Validation Error", "OK", "Error") | Out-Null
+            $script:btnLaunch.Enabled = $true
+            return
+        }
+
+        # Update config from GUI selections
+        foreach ($tool in $script:tools) {
+            $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+        }
+        if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
+        if ($script:txtTenable.Text) { $config.TenableWAS.ScanId = $script:txtTenable.Text }
+
+        Write-GuiMessage "Selected Tools: $(($script:tools | Where-Object { $config.Tools[$_] }) -join ', ')"
+
+        # Process TenableWAS
+        if ($config.Tools.TenableWAS) {
+            Process-TenableWAS -Config $config
+        }
+
+        # Process SonarQube
+        if ($config.Tools.SonarQube) {
+            Process-SonarQube -Config $config
+        }
+
+        # Save DefectDojo selections back to config
+        if ($config.Tools.DefectDojo) {
+            Save-DefectDojoConfig -Config $config
+        }
+
+        # Expose the updated config to the parent session for potential post-script actions
+        Set-Variable -Name Config -Scope Global -Value $config
+        Write-GuiMessage 'Configuration stored in global: $Config. Tasks completed successfully!'
+
+        # Show completion message
+        $script:lblComplete.Text = "Complete! Ready for next task."
+        $script:lblComplete.Visible = $true
+        
+        # Re-enable the launch button to allow for additional tasks
+        $script:btnLaunch.Enabled = $true
+
+    } catch {
+        Write-GuiMessage "An unexpected error occurred: $_" 'ERROR'
+        $script:btnLaunch.Enabled = $true
+    }
+}
+
+function Process-TenableWAS {
+    param([hashtable]$Config)
+    Write-GuiMessage "Starting TenableWAS scan export (Scan ID: $($Config.TenableWAS.ScanId))"
+    try {
+        $exportedFile = Export-TenableWASScan -ScanId $Config.TenableWAS.ScanId
+        Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
+
+        if ($Config.Tools.DefectDojo) {
+            Write-GuiMessage "Uploading TenableWAS scan report to DefectDojo..."
+            Select-DefectDojoScans -FilePath $exportedFile
+            Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo"
+        }
+    } catch {
+        Write-GuiMessage "TenableWAS processing failed: $_" 'ERROR'
+    }
+}
+
+function Process-SonarQube {
+    param([hashtable]$Config)
+    Write-GuiMessage "Processing SonarQube scan..."
+    try {
+        $apiScanConfig = $script:cmbDDApiScan.SelectedItem
+        $test = $script:cmbDDTestSonar.SelectedItem
+        Invoke-SonarQubeProcessing -ApiScanConfiguration $apiScanConfig -Test $test
+        Write-GuiMessage "SonarQube processing completed for test $($test.Name)"
+    } catch {
+        Write-GuiMessage "SonarQube processing failed: $_" 'ERROR'
+    }
+}
+
+function Save-DefectDojoConfig {
+    param([hashtable]$Config)
+
+    $selections = @{
+        Product         = $script:cmbDDProduct.SelectedItem
+        Engagement      = $script:cmbDDEng.SelectedItem
+        ApiScanConfig   = $script:cmbDDApiScan.SelectedItem
+        TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
+        SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
+        BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
+        MinimumSeverity = $script:cmbDDSeverity.SelectedItem
+    }
+
+    # Validate that all necessary selections have been made
+    $incomplete = $false
+    if (-not $selections.Product -or -not $selections.Engagement) { $incomplete = $true }
+    if ($Config.Tools.TenableWAS -and -not $selections.TenableWASTest) { $incomplete = $true }
+    if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
+    if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
+
+    if ($incomplete) {
+        Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
+        return
+    }
+
+    # Update the config object
+    $Config.DefectDojo = @{
+        ProductId         = $selections.Product.Id
+        EngagementId      = $selections.Engagement.Id
+        APIScanConfigId   = $selections.ApiScanConfig.Id
+        TenableWASTestId  = $selections.TenableWASTest.Id
+        SonarQubeTestId   = $selections.SonarQubeTest.Id
+        BurpSuiteTestId   = $selections.BurpSuiteTest.Id
+        MinimumSeverity   = $selections.MinimumSeverity
+    }
+
+    Write-GuiMessage "Saving DefectDojo selections to config file..."
+    foreach($key in $selections.Keys) {
+        if($selections[$key]) {
+            Write-GuiMessage "Selected ${key}: $($selections[$key].Name) (Id: $($selections[$key].Id))"
+        }
+    }
     
-    $btnCancel.Add_Click({ $form.Close() })
-    # Prepopulate GUI from existing config
+    try {
+        Save-Config -Config $Config
+        Write-GuiMessage 'DefectDojo configuration saved.'
+    } catch {
+        Write-GuiMessage "Failed to save DefectDojo configuration: $_" 'ERROR'
+    }
+}
+
+#endregion Main Automation Logic
+
+#region Script Entry Point
+
+function Main {
+    Initialize-GuiElements
+    Register-EventHandlers
+    
+    Write-GuiMessage "DD Automation Launcher started."
+    
+    # Load data from APIs and config file
+    Load-DefectDojoData
     $initialConfig = Get-Config
-    foreach ($tool in $tools) {
-        if ($initialConfig.Tools.ContainsKey($tool)) {
-            $chkBoxes[$tool].Checked = [bool]$initialConfig.Tools[$tool]
-        }
-    }
-    # $chkDebug.Checked = [bool]$initialConfig.Debug
-    # if ($initialConfig.Paths.ContainsKey('BurpSuiteXmlFolder')) {
-    #     $txtBurp.Text = $initialConfig.Paths.BurpSuiteXmlFolder
-    # }
-    # Prepopulate TenableWAS Scan ID
-    if ($initialConfig.TenableWAS -and $initialConfig.TenableWAS.ScanId) {
-        $txtTenable.Text = $initialConfig.TenableWAS.ScanId
-    } elseif ($initialConfig.TenableWASScanId) {
-        $txtTenable.Text = $initialConfig.TenableWASScanId
-    }
+    Prepopulate-FormFromConfig -Config $initialConfig
 
-    # Prepopulate DefectDojo selections
-    if ($initialConfig.DefectDojo) {
-        Write-GuiMessage 'Prepopulating DefectDojo products...'
-        try {
-            $cmbDDProduct.Items.Clear()
-            $products = Get-DefectDojoProducts
-            foreach ($p in $products) { $cmbDDProduct.Items.Add($p) | Out-Null }
-            $cmbDDProduct.DisplayMember = 'Name'; $cmbDDProduct.ValueMember = 'Id'
-            $cmbDDProduct.Enabled = $true
-            if ($initialConfig.DefectDojo.ProductId) {
-                $sel = $cmbDDProduct.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.ProductId }
-                if ($sel) { $cmbDDProduct.SelectedItem = $sel }
-            }
-        } catch {
-            Write-GuiMessage "Failed to prepopulate DefectDojo products: $_" 'ERROR'
-        }
-        if ($initialConfig.DefectDojo.EngagementId) {
-            try {
-                $selEng = $cmbDDEng.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.EngagementId }
-                if ($selEng) { $cmbDDEng.SelectedItem = $selEng }
-            } catch {
-                Write-GuiMessage "Failed to prepopulate DefectDojo engagements: $_" 'ERROR'
-            }
-        }
-        # Prepopulate tool-specific DefectDojo tests
-        if ($initialConfig.DefectDojo.TenableWASTestId) {
-            try {
-                $sel = $cmbDDTestTenable.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.TenableWASTestId }
-                if ($sel) { $cmbDDTestTenable.SelectedItem = $sel }
-            } catch {
-                Write-GuiMessage "Failed to prepopulate DefectDojo TenableWAS test: $_" 'ERROR'
-            }
-        }
-        if ($initialConfig.DefectDojo.APIScanConfigId) {
-            try {
-                $sel = $cmbDDApiScan.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.APIScanConfigId }
-                if ($sel) { $cmbDDApiScan.SelectedItem = $sel }
-            } catch {
-                Write-GuiMessage "Failed to prepopulate DefectDojo API scan config: $_" 'ERROR'
-            }
-        }
-        if ($initialConfig.DefectDojo.SonarQubeTestId) {
-            try {
-                $sel = $cmbDDTestSonar.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.SonarQubeTestId }
-                if ($sel) { $cmbDDTestSonar.SelectedItem = $sel }
-            } catch {
-                Write-GuiMessage "Failed to prepopulate DefectDojo SonarQube test: $_" 'ERROR'
-            }
-        }
-        if ($initialConfig.DefectDojo.BurpSuiteTestId) {
-            try {
-                $sel = $cmbDDTestBurp.Items | Where-Object { $_.Id -eq $initialConfig.DefectDojo.BurpSuiteTestId }
-                if ($sel) { $cmbDDTestBurp.SelectedItem = $sel }
-            } catch {
-                Write-GuiMessage "Failed to prepopulate DefectDojo BurpSuite test: $_" 'ERROR'
-            }
-        }
-        if ($initialConfig.DefectDojo.MinimumSeverity) {
-            try {
-            $cmbDDSeverity.SelectedItem = $initialConfig.DefectDojo.MinimumSeverity
-            } catch {
-                Write-GuiMessage "Failed to prepopulate DefectDojo minimum severity: $_" 'ERROR'
-            }
-        }
-    }
-    
+    # Show the form
+    $script:form.ShowDialog() | Out-Null
+    $script:form.Dispose()
+}
 
+Main
 
-# Show form
-    [void]$form.ShowDialog()
+#endregion Script Entry Point

@@ -3,7 +3,7 @@
      API wrapper for DefectDojo interactions.
 
  .DESCRIPTION
-     Provides functions to retrieve and list DefectDojo products, engagements, and tests
+     Provides functions to retrieve and list DefectDojo products, engagements, tests, and API scan configurations
      via the DefectDojo API v2. Functions return PSCustomObjects containing Id and Name.
 
      API endpoints and schemas are documented in the Examples/Defect Dojo API v2.json file.
