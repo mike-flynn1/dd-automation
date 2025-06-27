@@ -5,6 +5,7 @@
         SonarQube   = $false
         BurpSuite   = $false
         DefectDojo  = $false
+        GitHub      = $false
     }
 
     # File paths for tools requiring local inputs
@@ -17,7 +18,8 @@
         DefectDojo = 'https://appsec.internal.bamtech.net/api/v2'
         TenableWAS = 'https://fedcloud.tenable.com/'
         SonarQube  = 'https://sonarqube.example.com/api'
-        BurpSuite =  'http://127.0.0.01:1234/api'
+        BurpSuite  = 'http://127.0.0.01:1234/api'
+        GitHub     = 'https://api.github.com'
     }
 
     # Default scan identifiers (optional)
@@ -33,4 +35,10 @@
         MinimumSeverity   = 'Low'  # Enter the minimum severity to upload
         APIScanConfig = 1
     }
+
+    # GitHub Organization
+    GitHub = @{
+    org = 'BAMTech-MyVector'
+}
+
 }
