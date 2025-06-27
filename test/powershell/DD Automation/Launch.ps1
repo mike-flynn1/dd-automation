@@ -36,6 +36,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
 $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'modules\Logging.ps1')
 . (Join-Path $scriptDir 'modules\Config.ps1')
+. (Join-Path $scriptDir 'GitHub.ps1')
 . (Join-Path $scriptDir 'TenableWAS.ps1')
 . (Join-Path $scriptDir 'EnvValidator.ps1')
 . (Join-Path $scriptDir 'DefectDojo.ps1')

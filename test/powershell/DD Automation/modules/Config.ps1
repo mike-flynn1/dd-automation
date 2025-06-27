@@ -54,7 +54,7 @@ function Validate-Config {
     }
 
     # Validate Tools keys
-    $requiredToolKeys = @('TenableWAS','SonarQube','BurpSuite','DefectDojo')
+    $requiredToolKeys = @('TenableWAS','SonarQube','BurpSuite','DefectDojo','GitHub')
     foreach ($t in $requiredToolKeys) {
         if ($Config.Tools -isnot [hashtable] -or -not $Config.Tools.ContainsKey($t)) {
             $errors += "Configuration.Tools missing key: $t"
