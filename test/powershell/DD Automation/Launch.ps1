@@ -362,7 +362,7 @@ function Invoke-Automation {
             $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
-        if ($script:txtTenable.Text) { $config.TenableWAS.ScanId = $script:txtTenable.Text }
+        if ($script:txtTenable.Text) { $config.TenableWASScanId = $script:txtTenable.Text }
 
         Write-GuiMessage "Selected Tools: $(($script:tools | Where-Object { $config.Tools[$_] }) -join ', ')"
 
@@ -400,9 +400,9 @@ function Invoke-Automation {
 
 function Process-TenableWAS {
     param([hashtable]$Config)
-    Write-GuiMessage "Starting TenableWAS scan export (Scan ID: $($Config.TenableWAS.ScanId))"
+    Write-GuiMessage "Starting TenableWAS scan export (Scan ID: $($Config.TenableWASScanId))"
     try {
-        $exportedFile = Export-TenableWASScan -ScanId $Config.TenableWAS.ScanId
+        $exportedFile = Export-TenableWASScan -ScanId $Config.TenableWASScanId
         Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
 
         if ($Config.Tools.DefectDojo) {
@@ -421,7 +421,7 @@ function Process-SonarQube {
     try {
         $apiScanConfig = $script:cmbDDApiScan.SelectedItem
         $test = $script:cmbDDTestSonar.SelectedItem
-        Invoke-SonarQubeProcessing -ApiScanConfiguration $apiScanConfig -Test $test
+        Invoke-SonarQubeProcessing -ApiScanConfiguration $apiScanConfig.Id -Test $test.Id
         Write-GuiMessage "SonarQube processing completed for test $($test.Name)"
     } catch {
         Write-GuiMessage "SonarQube processing failed: $_" 'ERROR'
