@@ -144,6 +144,80 @@ function GitHub-CodeQLDownload {
     }
 }
 
+function GitHub-SecretScanDownload {
+    <#
+    .SYNOPSIS
+        Downloads JSON secret scanning results for all repositories.
+    .PARAMETER Owner
+        GitHub organization name.
+    .PARAMETER Limit
+        Maximum repos and analyses per page.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [string]$Owner,
+        [Parameter(Mandatory=$false)]
+        [int]$Limit = 100
+    )
+
+    $config = Get-Config
+    if (-not $Owner) {
+        $Owner = $config.GitHub.org
+        if (-not $Owner) { Throw 'GitHub organization not specified.' }
+    }
+
+    $repos   = Get-GitHubRepos -Owner $Owner -Limit $Limit
+    $baseUrl = $config.ApiBaseUrls.GitHub.TrimEnd('/')
+    $apiKey  = [Environment]::GetEnvironmentVariable('GITHUB_PAT')
+    if (-not $apiKey) { Throw 'Missing GitHub API token (GITHUB_PAT).' }
+
+    $headers = @{
+        Authorization = "Bearer $apiKey"
+        Accept        = 'application/vnd.github.v3+json'
+        'User-Agent'  = 'DefectDojo-Automation'
+    }
+
+    $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubSecretScanning'
+    if (-not (Test-Path $downloadRoot)) {
+        New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
+    }
+
+    foreach ($repo in $repos) {
+        $repoFullName = $repo.full_name
+        Write-Log -Message ("Processing repository {0} for secret scanning alerts" -f $repoFullName) -Level 'INFO'
+        
+        try {
+            $uriAlerts = "{0}/repos/{1}/secret-scanning/alerts?state=open&per_page={2}" -f $baseUrl, $repoFullName, $Limit
+            $response = Invoke-WebRequest -Method Get -Uri $uriAlerts -Headers $headers -UseBasicParsing
+            
+            $alerts = $response.Content | ConvertFrom-Json
+            if (-not $alerts -or $alerts.Count -eq 0) {
+                Write-Log -Message ("No open secret scanning alerts for {0}" -f $repoFullName) -Level 'INFO'
+                continue
+            }
+
+            $fileName = "{0}-secrets.json" -f $repo.name
+            $outFile = Join-Path $downloadRoot $fileName
+            
+            Write-Log -Message ("Saving {0} secret scanning alerts to {1}" -f $alerts.Count, $fileName) -Level 'INFO'
+            $response.Content | Out-File -FilePath $outFile -Encoding UTF8
+            Write-Log -Message ("Saved secret scanning alerts to {0}" -f $outFile) -Level 'INFO'
+        }
+        catch {
+            $errorContent = $_.Exception.Response.Content
+            if ($errorContent -match "Secret Scanning is disabled") {
+                Write-Log -Message ("Secret Scanning not enabled for {0}, skipping secret scanning" -f $repoFullName) -Level 'WARNING'
+            }
+            else {
+                Write-Log -Message ("Failed to retrieve secret scanning alerts for {0}: {1}" -f $repoFullName, $_) -Level 'ERROR'
+            }
+        }
+    }
+}
+
 #To test:
-#GitHub-CodeQLDownload {-Owner 'BAMTech-MyVector' -Limit 25
+#GitHub-CodeQLDownload -Owner 'BAMTech-MyVector' -Limit 25
+
+#GitHub-SecretScanDownload -Owner 'BAMTech-MyVector' -Limit 50
 

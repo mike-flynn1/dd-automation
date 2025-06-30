@@ -86,5 +86,5 @@
  3. Update this README.md after each development step.
 
  ###
- - Current tasks: Github File Downloads
+ - Current tasks: Github Secret Scanning Downloads
  - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), 
