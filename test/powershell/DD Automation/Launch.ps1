@@ -84,12 +84,12 @@ function Initialize-GuiElements {
     # Script-level scope allows these variables to be accessed by event handlers
     $script:form = New-Object System.Windows.Forms.Form
     $script:chkBoxes = @{}
-    $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo')
+    $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo','GitHub')
 
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(620, 700)
+    $form.Size = New-Object System.Drawing.Size(620, 730)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
@@ -106,7 +106,9 @@ function Initialize-GuiElements {
         $chk = New-Object System.Windows.Forms.CheckBox
         $chk.Text = $name
         $chk.AutoSize = $true
-        $chk.Location = New-Object System.Drawing.Point((10 + ($i * 140)), 20)
+        $x = 10 + ($i % 3) * 140 # 3 checkboxes per row
+        $y = 20 + [Math]::Floor($i / 3) * 30 # Move to next row after 3 checkboxes
+        $chk.Location = New-Object System.Drawing.Point($x, $y)
         $chk.Checked = $true
         $grpTools.Controls.Add($chk)
         $chkBoxes[$name] = $chk
@@ -131,7 +133,8 @@ function Initialize-GuiElements {
         lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 300)
         lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 330)
         lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 360)
-        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 390)
+        lblDDTestGitHub   = [Tuple]::Create('GitHub CodeQL Test:', 390)
+        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 420)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -144,7 +147,7 @@ function Initialize-GuiElements {
     $script:cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
 
     # Status ListBox
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 180); Location = New-Object System.Drawing.Point(10, 420) }
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 180); Location = New-Object System.Drawing.Point(10, 450) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
@@ -179,6 +182,12 @@ function Register-EventHandlers {
     $chkBoxes['SonarQube'].Add_CheckedChanged({
         $script:cmbDDTestSonar.Enabled = $this.Checked -and $script:cmbDDTestSonar.Items.Count -gt 0
         $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
+    })
+    $chkBoxes['GitHub'].Add_CheckedChanged({
+        $script:cmbDDTestGitHub.Enabled = $this.Checked -and $script:cmbDDTestGitHub.Items.Count -gt 0
+    })
+    $chkBoxes['DefectDojo'].Add_CheckedChanged({
+        $script:cmbDDSeverity.Enabled = $this.Checked
     })
 
     # Browse for BurpSuite folder
@@ -229,7 +238,7 @@ function Handle-EngagementChange {
     Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
     try {
         $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
-        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp)) {
+        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestGitHub)) {
             $cmb.Items.Clear()
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
@@ -241,7 +250,7 @@ function Handle-EngagementChange {
         $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
         $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
-
+        $script:cmbDDTestGitHub.Enabled = $script:chkBoxes['GitHub'].Checked -and   $tests.Count -gt 0
         if (-not $tests) {
             Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
         }
@@ -363,7 +372,7 @@ function Invoke-Automation {
             $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
-        if ($script:txtTenable.Text) { $config.TenableWAS.ScanId = $script:txtTenable.Text }
+        if ($script:txtTenable.Text) { $config.TenableWASScanId = $script:txtTenable.Text }
 
         Write-GuiMessage "Selected Tools: $(($script:tools | Where-Object { $config.Tools[$_] }) -join ', ')"
 
@@ -375,6 +384,11 @@ function Invoke-Automation {
         # Process SonarQube
         if ($config.Tools.SonarQube) {
             Process-SonarQube -Config $config
+        }
+
+        # Process GitHub CodeQL 
+        if ($config.Tools.GitHub) {
+            Process-GitHubCodeQL -Config $config
         }
 
         # Save DefectDojo selections back to config
@@ -429,6 +443,27 @@ function Process-SonarQube {
     }
 }
 
+function Process-GitHubCodeQL {
+    param([hashtable]$Config)
+    Write-GuiMessage "Starting GitHub CodeQL download..."
+    try {
+        GitHub-CodeQLDownload -Owner $Config.GitHub.org
+        Write-GuiMessage "GitHub CodeQL download completed."
+
+        if ($Config.Tools.DefectDojo) {
+            Write-GuiMessage "Uploading GitHub CodeQL reports to DefectDojo..."
+            $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
+            $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
+            foreach ($file in $sarifFiles) {
+                Select-DefectDojoScans -FilePath $file
+            }
+            Write-GuiMessage "GitHub CodeQL reports uploaded successfully to DefectDojo"
+        }
+    } catch {
+        Write-GuiMessage "GitHub CodeQL processing failed: $_" 'ERROR'
+    }
+}
+
 function Save-DefectDojoConfig {
     param([hashtable]$Config)
 
@@ -439,6 +474,7 @@ function Save-DefectDojoConfig {
         TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
         SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
         BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
+        GitHubTest      = $script:cmbDDTestGitHub.SelectedItem
         MinimumSeverity = $script:cmbDDSeverity.SelectedItem
     }
 
@@ -462,6 +498,7 @@ function Save-DefectDojoConfig {
         TenableWASTestId  = $selections.TenableWASTest.Id
         SonarQubeTestId   = $selections.SonarQubeTest.Id
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
+        GitHubTestID      = $selections.GitHubTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
     }
 

@@ -29,7 +29,7 @@ function Get-GitHubRepos {
         [Parameter(Mandatory=$false)]
         [string]$Owner,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 100
+        [int]$Limit = 200
     )
 
     $config = Get-Config
@@ -75,7 +75,7 @@ function GitHub-CodeQLDownload {
         [Parameter(Mandatory=$false)]
         [string]$Owner,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 100
+        [int]$Limit = 200
     )
 
     $config = Get-Config
@@ -158,7 +158,7 @@ function GitHub-SecretScanDownload {
         [Parameter(Mandatory=$false)]
         [string]$Owner,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 100
+        [int]$Limit = 200
     )
 
     $config = Get-Config

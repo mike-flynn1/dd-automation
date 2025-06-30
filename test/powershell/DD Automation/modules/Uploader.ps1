@@ -102,6 +102,7 @@ function Select-DefectDojoScans {
         'TenableWASTestId'  = 'Tenable Scan'
         'SonarQubeTestId'   = 'SonarQube Scan'
         'BurpSuiteTestId'   = 'Burp Scan'
+        'GitHubTestID'      = 'SARIF'
     }
     foreach ($key in $map.Keys) {
         if ($config.DefectDojo.ContainsKey($key) -and $config.DefectDojo[$key]) {
