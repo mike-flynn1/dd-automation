@@ -407,7 +407,11 @@ function Process-TenableWAS {
 
         if ($Config.Tools.DefectDojo) {
             Write-GuiMessage "Uploading TenableWAS scan report to DefectDojo..."
-            Select-DefectDojoScans -FilePath $exportedFile
+
+            # Ensure file path is explicitly converted to string
+            $filePathString = ([string]$exportedFile).Trim()
+
+            Select-DefectDojoScans -FilePath $filePathString
             Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo"
         }
     } catch {
