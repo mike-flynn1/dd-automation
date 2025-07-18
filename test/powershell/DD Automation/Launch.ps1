@@ -408,11 +408,19 @@ function Process-TenableWAS {
         if ($Config.Tools.DefectDojo) {
             Write-GuiMessage "Uploading TenableWAS scan report to DefectDojo..."
 
+            # Get the specifically selected TenableWAS test
+            $tenableTest = $script:cmbDDTestTenable.SelectedItem
+            if (-not $tenableTest) {
+                Write-GuiMessage "No TenableWAS test selected for DefectDojo upload" 'WARNING'
+                return
+            }
+
             # Ensure file path is explicitly converted to string
             $filePathString = ([string]$exportedFile).Trim()
 
-            Select-DefectDojoScans -FilePath $filePathString
-            Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo"
+            # Upload directly to the TenableWAS test only
+            Upload-DefectDojoScan -FilePath $filePathString -TestId $tenableTest.Id -ScanType 'Tenable Scan'
+            Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $($tenableTest.Name)"
         }
     } catch {
         Write-GuiMessage "TenableWAS processing failed: $_" 'ERROR'
