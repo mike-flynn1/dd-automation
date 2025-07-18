@@ -81,6 +81,7 @@ function ProUpload-DefectDojoScan {
     return $output
 }
 
+# DELETE THIS DUMB ASS FUNCTION????
 function Select-DefectDojoScans {
     <#
     .SYNOPSIS

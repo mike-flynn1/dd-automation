@@ -455,7 +455,7 @@ function Process-GitHubCodeQL {
             $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
             $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
             foreach ($file in $sarifFiles) {
-                Select-DefectDojoScans -FilePath $file
+                Upload-DefectDojoScan -FilePath $file -TestId $Config.DefectDojo.GitHubTestID
             }
             Write-GuiMessage "GitHub CodeQL reports uploaded successfully to DefectDojo"
         }
