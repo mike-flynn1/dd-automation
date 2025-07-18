@@ -17,7 +17,7 @@ $scriptDir = $PSScriptRoot
 $TOOL_ENV_VARS = @{
     'DefectDojo' = @('DOJO_API_KEY')
     'TenableWAS' = @('TENWAS_ACCESS_KEY', 'TENWAS_SECRET_KEY')
-    'SonarQube'  = @('SONARQUBE_API_TOKEN')
+    #'SonarQube'  = @('SONARQUBE_API_TOKEN')
     'BurpSuite'  = @('BURP_API_KEY')
 }
 
