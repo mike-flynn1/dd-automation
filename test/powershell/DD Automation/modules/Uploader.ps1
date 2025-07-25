@@ -20,7 +20,10 @@ function Upload-DefectDojoScan {
         [int]$TestId,
 
         [Parameter(Mandatory=$false)]
-        [string]$ScanType = 'Tenable WAS Scan'
+        [string]$ScanType = 'Tenable WAS Scan',
+
+        [Parameter(Mandatory=$false)]
+        [bool]$CloseOldFindings = $false
     )
 
     $config  = Get-Config
@@ -33,15 +36,14 @@ function Upload-DefectDojoScan {
     $headers = @{ 
         Authorization = "Token $apiKey"
         accept        = 'application/json'
-        #'Content-Type' = 'multipart/form-data'
     }
     $form    = @{
-        test             = $TestId
-        scan_type        = $ScanType
-        file             = Get-Item -Path $FilePath
-        minimum_severity = $config.DefectDojo.MinimumSeverity
+        test                = $TestId
+        scan_type            = $ScanType
+        file                 = Get-Item -Path $FilePath
+        minimum_severity     = $config.DefectDojo.MinimumSeverity
+        close_old_findings   = $CloseOldFindings
     }
-
 
     $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Form $form -UseBasicParsing
     Write-Log -Message "DefectDojo import-scan response: $($response | Out-String)" -Level 'INFO'
