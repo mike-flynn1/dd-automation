@@ -454,10 +454,30 @@ function Process-GitHubCodeQL {
             Write-GuiMessage "Uploading GitHub CodeQL reports to DefectDojo..."
             $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
             $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
+            $uploadErrors = 0
+            
             foreach ($file in $sarifFiles) {
-                Upload-DefectDojoScan -FilePath $file -TestId $Config.DefectDojo.GitHubTestID -ScanType 'SARIF' -CloseOldFindings $false
+                try {
+                    Upload-DefectDojoScan -FilePath $file -TestId $Config.DefectDojo.GitHubTestID -ScanType 'SARIF' -CloseOldFindings $false
+                } catch {
+                    $uploadErrors++
+                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
+                }
             }
-            Write-GuiMessage "GitHub CodeQL reports uploaded successfully to DefectDojo"
+            
+            if ($uploadErrors -eq 0) {
+                Write-GuiMessage "GitHub CodeQL reports uploaded successfully to DefectDojo"
+                # Clean up downloaded files after successful uploads
+                try {
+                    Write-GuiMessage "Cleaning up downloaded GitHub CodeQL files..."
+                    Remove-Item -Path $downloadRoot -Recurse -Force
+                    Write-GuiMessage "GitHub CodeQL download directory cleaned up successfully"
+                } catch {
+                    Write-GuiMessage "Failed to clean up download directory: $_" 'WARNING'
+                }
+            } else {
+                Write-GuiMessage "GitHub CodeQL upload completed with $uploadErrors error(s). Download files retained for review." 'WARNING'
+            }
         }
     } catch {
         Write-GuiMessage "GitHub CodeQL processing failed: $_" 'ERROR'
