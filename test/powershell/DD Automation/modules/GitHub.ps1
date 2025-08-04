@@ -114,33 +114,39 @@ function GitHub-CodeQLDownload {
             Write-Log -Message ("No analyses for {0}, skipping" -f $repoFullName) -Level 'INFO'
             continue
         }
-            foreach ($analysis in $analyses) {
-                $analysisId = $analysis.id
 
-                # skip if no Results
-                if ($analysis.results_count -lt 1) {
-                    Write-Log -Message ("No Results for analysis {0}, skipping" -f $analysisId) -Level 'INFO'
-                    continue
-                }
-                $sarifUrl   = $analysis.url
-                $fileName   = "{0}-{1}.sarif" -f $repo.name, $analysisId
-                $outFile    = Join-Path $downloadRoot $fileName
+    # Group analyses by category and select the latest one based on created_at
+    $latestAnalyses = $analyses | Group-Object -Property category | ForEach-Object {
+        $_.Group | Sort-Object -Property created_at -Descending | Select-Object -First 1
+    }
 
-                Write-Log -Message ("Downloading SARIF file {0} from {1}" -f $fileName, $sarifUrl) -Level 'INFO'
-                try {
-                    Invoke-WebRequest -Uri $sarifUrl -Headers $headers -OutFile $outFile -UseBasicParsing
-                    Write-Log -Message ("Downloaded SARIF file to {0}" -f $outFile) -Level 'INFO'
-                }
-                catch {
-                    $errorContent = $_.Exception.Response.Content
-                    if ($errorContent -match "Advanced Security must be enabled") {
-                        Write-Log -Message ("Advanced Security not enabled for {0}/{1}, skipping download" -f $repoFullName, $analysisId) -Level 'WARNING'
-                    }
-                    else {
-                        Write-Log -Message ("Failed to download SARIF for {0}/{1}: {2}" -f $repoFullName, $analysisId, $_) -Level 'ERROR'
-                    }
-                }
-            }
+    foreach ($analysis in $latestAnalyses) {
+    $analysisId = $analysis.id
+
+    # skip if no Results
+    if ($analysis.results_count -lt 1) {
+        Write-Log -Message ("No Results for analysis {0}, skipping" -f $analysisId) -Level 'INFO'
+        continue
+    }
+    $sarifUrl   = $analysis.url
+    $fileName   = "{0}-{1}.sarif" -f $repo.name, $analysisId
+    $outFile    = Join-Path $downloadRoot $fileName
+
+    Write-Log -Message ("Downloading SARIF file {0} from {1}" -f $fileName, $sarifUrl) -Level 'INFO'
+    try {
+        Invoke-WebRequest -Uri $sarifUrl -Headers $headers -OutFile $outFile -UseBasicParsing
+        Write-Log -Message ("Downloaded SARIF file to {0}" -f $outFile) -Level 'INFO'
+    }
+    catch {
+        $errorContent = $_.Exception.Response.Content
+        if ($errorContent -match "Advanced Security must be enabled") {
+            Write-Log -Message ("Advanced Security not enabled for {0}/{1}, skipping download" -f $repoFullName, $analysisId) -Level 'WARNING'
+        }
+        else {
+            Write-Log -Message ("Failed to download SARIF for {0}/{1}: {2}" -f $repoFullName, $analysisId, $_) -Level 'ERROR'
+        }
+    }
+    }
     }
 }
 
@@ -217,7 +223,6 @@ function GitHub-SecretScanDownload {
 }
 
 #To test:
-#GitHub-CodeQLDownload -Owner 'BAMTech-MyVector' -Limit 25
+#GitHub-CodeQLDownload -Owner 'BAMTech-MyVector'
 
 #GitHub-SecretScanDownload -Owner 'BAMTech-MyVector' -Limit 50
-
