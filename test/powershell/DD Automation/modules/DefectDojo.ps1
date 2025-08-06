@@ -95,7 +95,7 @@ function Get-DefectDojoTests {
     .PARAMETER Limit
         The maximum number of tests to retrieve (API page size).
     .OUTPUTS
-        PSCustomObject with properties Id and Name.
+        PSCustomObject with properties ID, Name and Title.
     #>
     [CmdletBinding()]
     param(
@@ -118,7 +118,7 @@ function Get-DefectDojoTests {
     Write-Log -Message "Retrieving DefectDojo tests for engagement $EngagementId (limit=$Limit)" -Level 'INFO'
     $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -UseBasicParsing
 
-    return $response.results | Select-Object @{Name='Id';Expression={$_.id}}, @{Name='Name';Expression={$_.test_type_name}}
+    return $response.results | Select-Object @{Name='Id';Expression={$_.id}}, @{Name='Name';Expression={$_.test_type_name}}, @{Name='Title';Expression={$_.title}}
 }
 
 function Get-DefectDojoApiScanConfigurations {
@@ -157,6 +157,69 @@ function Get-DefectDojoApiScanConfigurations {
     $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -UseBasicParsing
 
     return $response.results | Select-Object @{Name='Id';Expression={$_.id}}, @{Name='Name';Expression={$_.service_key_1}}
+}
+
+function New-DefectDojoTest {
+    <#
+    .SYNOPSIS
+        Creates a new DefectDojo test.
+    .DESCRIPTION
+        Calls the DefectDojo API /api/v2/tests/ endpoint to create a new test
+        and returns the created test object.
+    .PARAMETER EngagementId
+        The Id of the DefectDojo engagement to create the test under.
+    .PARAMETER TestName
+        The name for the new test.
+    .PARAMETER TestType
+        The test type (e.g., "SARIF", "SonarQube Scan", etc.).
+    .OUTPUTS
+        PSCustomObject with properties Id and Name.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$EngagementId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TestName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TestType
+    )
+
+    $config = Get-Config
+    $baseUrl = $config.ApiBaseUrls.DefectDojo.TrimEnd('/')
+    $apiKey = [Environment]::GetEnvironmentVariable('DOJO_API_KEY')
+    if (-not $apiKey) {
+        Throw 'Missing DefectDojo API key (DOJO_API_KEY).'
+    }
+    $headers = @{ 
+        Authorization = "Token $apiKey"
+        'Content-Type' = 'application/json'
+    }
+    $uri = "$baseUrl/tests/"
+
+    $body = @{
+        engagement = $EngagementId
+        title = $TestName
+        #environment = 1
+        test_type = $TestType
+        target_start = (Get-Date).ToString("yyyy-MM-dd")
+        target_end = (Get-Date).ToString("yyyy-MM-dd")
+    } | ConvertTo-Json
+
+    Write-Log -Message "Creating DefectDojo test '$TestName' for engagement $EngagementId with name '$TestName'" -Level 'INFO'
+    try {
+        $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Body $body -UseBasicParsing
+        Write-Log -Message "Test created successfully: ID $($response.id)" -Level 'INFO'
+        return [PSCustomObject]@{
+            Id = $response.id
+            Name = $TestName
+        }
+    } catch {
+        Write-Log -Message "Failed to create test '$TestName': $_" -Level 'ERROR'
+        throw $_
+    }
 }
 
 #DEBUG
