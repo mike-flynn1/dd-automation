@@ -29,3 +29,6 @@ Thumbs.db
 
 # Ignore user-specific PowerShell configuration files
 config/*.psd1
+
+#ignore .github folder
+.github/
