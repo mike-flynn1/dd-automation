@@ -447,7 +447,7 @@ function Process-GitHubCodeQL {
     param([hashtable]$Config)
     Write-GuiMessage "Starting GitHub CodeQL download..."
     try {
-        GitHub-CodeQLDownload -Owner $Config.GitHub.org
+        #GitHub-CodeQLDownload -Owner $Config.GitHub.org
         Write-GuiMessage "GitHub CodeQL download completed."
 
         if ($Config.Tools.DefectDojo) {
@@ -458,7 +458,35 @@ function Process-GitHubCodeQL {
             
             foreach ($file in $sarifFiles) {
                 try {
-                    Upload-DefectDojoScan -FilePath $file -TestId $Config.DefectDojo.GitHubTestID -ScanType 'SARIF' -CloseOldFindings $false
+                    # Extract service name from SARIF file
+                    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                    
+                    # Remove numeric suffixes
+                    $serviceName = $fileName -replace '-\d+$', ''
+
+                    # Check if test exists, create if not
+                    $engagement = $script:cmbDDEng.SelectedItem
+                    $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
+                    $existingTest = $existingTests | Where-Object { $_.title -eq $serviceName }
+                    
+                    if (-not $existingTest) {
+                        Write-GuiMessage "Creating new test: $serviceName"
+                        try {
+                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20 #hard coded in DD why
+                            Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
+                        } catch {
+                            Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
+                            continue
+                        }
+                        #Upload with new test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                    } else {
+                        Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
+                        #Upload with existing test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                    }
+
+                    
                 } catch {
                     $uploadErrors++
                     Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
