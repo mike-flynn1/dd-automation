@@ -146,8 +146,7 @@ function Initialize-GuiElements {
         lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 300)
         lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 330)
         lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 360)
-        lblDDTestGitHub   = [Tuple]::Create('GitHub CodeQL Test:', 390)
-        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 420)
+        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 390)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -197,7 +196,7 @@ function Register-EventHandlers {
         $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
     })
     $chkBoxes['GitHub'].Add_CheckedChanged({
-        $script:cmbDDTestGitHub.Enabled = $this.Checked -and $script:cmbDDTestGitHub.Items.Count -gt 0
+        # GitHub will use the selected engagement, no separate test selection needed
     })
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
@@ -251,7 +250,7 @@ function Handle-EngagementChange {
     Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
     try {
         $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
-        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestGitHub)) {
+        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp)) {
             $cmb.Items.Clear()
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
@@ -263,7 +262,6 @@ function Handle-EngagementChange {
         $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
         $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
-        $script:cmbDDTestGitHub.Enabled = $script:chkBoxes['GitHub'].Checked -and   $tests.Count -gt 0
         if (-not $tests) {
             Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
         }
@@ -460,7 +458,7 @@ function Process-GitHubCodeQL {
     param([hashtable]$Config)
     Write-GuiMessage "Starting GitHub CodeQL download..."
     try {
-        #GitHub-CodeQLDownload -Owner $Config.GitHub.org
+        GitHub-CodeQLDownload -Owner $Config.GitHub.org
         Write-GuiMessage "GitHub CodeQL download completed."
 
         if ($Config.Tools.DefectDojo) {
@@ -535,7 +533,6 @@ function Save-DefectDojoConfig {
         TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
         SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
         BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
-        GitHubTest      = $script:cmbDDTestGitHub.SelectedItem
         MinimumSeverity = $script:cmbDDSeverity.SelectedItem
     }
 
@@ -559,7 +556,6 @@ function Save-DefectDojoConfig {
         TenableWASTestId  = $selections.TenableWASTest.Id
         SonarQubeTestId   = $selections.SonarQubeTest.Id
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
-        GitHubTestID      = $selections.GitHubTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
     }
 
