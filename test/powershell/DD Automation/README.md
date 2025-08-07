@@ -61,8 +61,9 @@
  2. Open PowerShell with appropriate execution policy.
  3. Launch the script using .\Launch.ps1
  4. A GUI prompt will launch to select tools and input files/folders.
- 5. Press Go.
- 6. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
+ 5. All checkboxes have tooltips to display their functionality. 
+ 6. Press Go.
+ 7. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
 
 
 ## Modules
@@ -86,5 +87,5 @@
  3. Update this README.md after each development step.
 
  ### 
- - Current tasks: Github Secret Scanning Downloads
- - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), 
+ - Current tasks: 
+ - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), revisit secret scanning when DD Pro is up.

@@ -100,6 +100,10 @@ function Initialize-GuiElements {
     $grpTools.Location = New-Object System.Drawing.Point(10, 10)
     $form.Controls.Add($grpTools)
 
+    # Create tooltip for checkboxes
+    $script:toolTip = New-Object System.Windows.Forms.ToolTip
+    $script:toolTip.ShowAlways = $true
+
     # Tool Checkboxes
     for ($i = 0; $i -lt $tools.Count; $i++) {
         $name = $tools[$i]
@@ -112,6 +116,15 @@ function Initialize-GuiElements {
         $chk.Checked = $true
         $grpTools.Controls.Add($chk)
         $chkBoxes[$name] = $chk
+        
+        # Add tooltips for each checkbox
+        switch ($name) {
+            'TenableWAS' { $script:toolTip.SetToolTip($chk, "Export and upload web application security scan results") }
+            'SonarQube' { $script:toolTip.SetToolTip($chk, "Process code quality and security analysis results") }
+            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Upload web application security scan XML reports") }
+            'DefectDojo' { $script:toolTip.SetToolTip($chk, "Vulnerability management and tracking platform") }
+            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL security analysis reports") }
+        }
     }
 
     # BurpSuite Controls
@@ -133,8 +146,7 @@ function Initialize-GuiElements {
         lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 300)
         lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 330)
         lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 360)
-        lblDDTestGitHub   = [Tuple]::Create('GitHub CodeQL Test:', 390)
-        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 420)
+        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 390)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -184,7 +196,7 @@ function Register-EventHandlers {
         $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
     })
     $chkBoxes['GitHub'].Add_CheckedChanged({
-        $script:cmbDDTestGitHub.Enabled = $this.Checked -and $script:cmbDDTestGitHub.Items.Count -gt 0
+        # GitHub will use the selected engagement, no separate test selection needed
     })
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
@@ -238,7 +250,7 @@ function Handle-EngagementChange {
     Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
     try {
         $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
-        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestGitHub)) {
+        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp)) {
             $cmb.Items.Clear()
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
@@ -250,7 +262,6 @@ function Handle-EngagementChange {
         $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
         $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
-        $script:cmbDDTestGitHub.Enabled = $script:chkBoxes['GitHub'].Checked -and   $tests.Count -gt 0
         if (-not $tests) {
             Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
         }
@@ -458,7 +469,35 @@ function Process-GitHubCodeQL {
             
             foreach ($file in $sarifFiles) {
                 try {
-                    Upload-DefectDojoScan -FilePath $file -TestId $Config.DefectDojo.GitHubTestID -ScanType 'SARIF' -CloseOldFindings $false
+                    # Extract service name from SARIF file
+                    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                    
+                    # Remove numeric suffixes
+                    $serviceName = $fileName -replace '-\d+$', ''
+
+                    # Check if test exists, create if not
+                    $engagement = $script:cmbDDEng.SelectedItem
+                    $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
+                    $existingTest = $existingTests | Where-Object { $_.title -eq $serviceName }
+                    
+                    if (-not $existingTest) {
+                        Write-GuiMessage "Creating new test: $serviceName"
+                        try {
+                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20 #hard coded in DD why
+                            Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
+                        } catch {
+                            Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
+                            continue
+                        }
+                        #Upload with new test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                    } else {
+                        Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
+                        #Upload with existing test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                    }
+
+                    
                 } catch {
                     $uploadErrors++
                     Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
@@ -494,7 +533,6 @@ function Save-DefectDojoConfig {
         TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
         SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
         BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
-        GitHubTest      = $script:cmbDDTestGitHub.SelectedItem
         MinimumSeverity = $script:cmbDDSeverity.SelectedItem
     }
 
@@ -518,7 +556,6 @@ function Save-DefectDojoConfig {
         TenableWASTestId  = $selections.TenableWASTest.Id
         SonarQubeTestId   = $selections.SonarQubeTest.Id
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
-        GitHubTestID      = $selections.GitHubTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
     }
 
