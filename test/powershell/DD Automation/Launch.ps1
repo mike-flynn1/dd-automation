@@ -100,6 +100,10 @@ function Initialize-GuiElements {
     $grpTools.Location = New-Object System.Drawing.Point(10, 10)
     $form.Controls.Add($grpTools)
 
+    # Create tooltip for checkboxes
+    $script:toolTip = New-Object System.Windows.Forms.ToolTip
+    $script:toolTip.ShowAlways = $true
+
     # Tool Checkboxes
     for ($i = 0; $i -lt $tools.Count; $i++) {
         $name = $tools[$i]
@@ -112,6 +116,15 @@ function Initialize-GuiElements {
         $chk.Checked = $true
         $grpTools.Controls.Add($chk)
         $chkBoxes[$name] = $chk
+        
+        # Add tooltips for each checkbox
+        switch ($name) {
+            'TenableWAS' { $script:toolTip.SetToolTip($chk, "Export and upload web application security scan results") }
+            'SonarQube' { $script:toolTip.SetToolTip($chk, "Process code quality and security analysis results") }
+            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Upload web application security scan XML reports") }
+            'DefectDojo' { $script:toolTip.SetToolTip($chk, "Vulnerability management and tracking platform") }
+            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL security analysis reports") }
+        }
     }
 
     # BurpSuite Controls
