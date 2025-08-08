@@ -64,11 +64,62 @@ function Validate-Environment {
     }
 
     if ($missing.Count -gt 0) {
-        $msg = "Required environment variables missing: $($missing -join ', ')"
-        Write-Log -Message $msg -Level 'ERROR'
-        Write-Host $msg -ForegroundColor Red
-        Throw $msg
+        Add-Type -AssemblyName System.Windows.Forms
+        $response = [System.Windows.Forms.MessageBox]::Show(
+            "Missing API keys: $($missing -join ', ')`n`nWould you like to enter them now? They will be saved to your user environment.", 
+            "Missing Environment Variables", 
+            [System.Windows.Forms.MessageBoxButtons]::YesNo, 
+            [System.Windows.Forms.MessageBoxIcon]::Question)
+        
+        if ($response -eq 'Yes') {
+            Request-MissingApiKeys -MissingVars $missing
+        } else {
+            $msg = "Required environment variables missing: $($missing -join ', ')"
+            Write-Log -Message $msg -Level 'ERROR'
+            Write-Host $msg -ForegroundColor Red
+            Throw $msg
+        }
     }
     
     Write-Log -Message 'All required environment variables are set.' -Level 'INFO'
+}
+
+function Request-MissingApiKeys {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$MissingVars
+    )
+
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    
+    foreach ($var in $MissingVars) {
+        try {
+            # Use Visual Basic InputBox for secure-looking input
+            $value = [Microsoft.VisualBasic.Interaction]::InputBox(
+                "Enter API key for $var",
+                "API Key Input",
+                ""
+            )
+            
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                Write-Log -Message "No value provided for $var, skipping..." -Level 'WARNING'
+                continue
+            }
+            
+            # Set environment variable at User scope for persistence
+            [Environment]::SetEnvironmentVariable($var, $value, [EnvironmentVariableTarget]::User)
+            # Also set for current process so it's immediately available
+            [Environment]::SetEnvironmentVariable($var, $value, [EnvironmentVariableTarget]::Process)
+            
+            Write-Log -Message "Successfully set environment variable: $var" -Level 'INFO'
+            Write-Host "✓ Set $var" -ForegroundColor Green
+            
+        } catch {
+            Write-Log -Message "Failed to set environment variable $var`: $_" -Level 'ERROR'
+            Write-Host "✗ Failed to set $var" -ForegroundColor Red
+        }
+    }
+    
+    Write-Host "`nEnvironment variables have been saved to your user profile and will persist across sessions." -ForegroundColor Cyan
 }
