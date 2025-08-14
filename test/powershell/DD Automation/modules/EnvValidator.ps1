@@ -19,6 +19,7 @@ $TOOL_ENV_VARS = @{
     'TenableWAS' = @('TENWAS_ACCESS_KEY', 'TENWAS_SECRET_KEY')
     #'SonarQube'  = @('SONARQUBE_API_TOKEN')
     'BurpSuite'  = @('BURP_API_KEY')
+    'GitHub'     = @('GITHUB_PAT')
 }
 
 #TODO: Possibly needed for pester tests. Validate when Pester working

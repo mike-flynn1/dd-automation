@@ -29,7 +29,6 @@ Thumbs.db
 
 # Ignore user-specific PowerShell configuration files
 config/*.psd1
-
 # Ignore Copilot AI files
 .github/ 
 CLAUDE.md

@@ -46,7 +46,7 @@ function Validate-Config {
     $errors = @()
 
     # Required top-level keys
-    $requiredKeys = @('Tools', 'Paths', 'ApiBaseUrls', 'DefectDojo')
+    $requiredKeys = @('Tools', 'Paths', 'ApiBaseUrls', 'DefectDojo', 'GitHub')
     foreach ($key in $requiredKeys) {
         if (-not $Config.ContainsKey($key)) {
             $errors += "Missing required top-level configuration key: $key"
@@ -54,7 +54,7 @@ function Validate-Config {
     }
 
     # Validate Tools keys
-    $requiredToolKeys = @('TenableWAS','SonarQube','BurpSuite','DefectDojo')
+    $requiredToolKeys = @('TenableWAS','SonarQube','BurpSuite','DefectDojo','GitHub')
     foreach ($t in $requiredToolKeys) {
         if ($Config.Tools -isnot [hashtable] -or -not $Config.Tools.ContainsKey($t)) {
             $errors += "Configuration.Tools missing key: $t"
@@ -71,6 +71,11 @@ function Validate-Config {
         if ($Config.ApiBaseUrls -isnot [hashtable] -or -not $Config.ApiBaseUrls.ContainsKey($api)) {
             $errors += "Configuration.ApiBaseUrls missing key: $api"
         }
+    }
+
+    # Validate GitHub keys
+    if ($Config.GitHub -isnot [hashtable] -or -not $Config.GitHub.ContainsKey('org')) {
+        $errors += "Configuration.GitHub missing key: org"
     }
 
     if ($errors.Count -gt 0) {
@@ -152,6 +157,23 @@ function Save-Config {
         }
         $sb.AppendLine('    }') | Out-Null
     }
+    
+    # GitHub configuration
+    if ($Config.ContainsKey('GitHub')) {
+        $sb.AppendLine('') | Out-Null
+        $sb.AppendLine('    GitHub = @{') | Out-Null
+        foreach ($key in $Config.GitHub.Keys) {
+            $val = $Config.GitHub[$key]
+            if ($null -eq $val -or $val -is [string]) {
+                $inner = if ($null -eq $val) { '' } else { $val }
+                $sb.AppendLine("        $key = '$inner'") | Out-Null
+            } else {
+                $sb.AppendLine("        $key = $val") | Out-Null
+            }
+        }
+        $sb.AppendLine('    }') | Out-Null
+    }
+    
     $sb.AppendLine('}') | Out-Null
 
     try {

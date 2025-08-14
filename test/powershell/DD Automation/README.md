@@ -61,8 +61,9 @@
  2. Open PowerShell with appropriate execution policy.
  3. Launch the script using .\Launch.ps1
  4. A GUI prompt will launch to select tools and input files/folders.
- 5. Press Go.
- 6. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
+ 5. All checkboxes have tooltips to display their functionality. 
+ 6. Press Go.
+ 7. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
 
 
 ## Modules
@@ -73,9 +74,9 @@
  | Logging       | Done    | Logging framework (Initialize-Log, Write-Log)      |
  | EnvValidator  | Done    | Validate required environment variables            |
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
- | SonarQube     | Pending | Fetch issues via SonarQube API - or use existing DD Integration                    |
+ | SonarQube     | Done    | Fetch issues via SonarQube API - or use existing DD Integration                    |
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
- | GitHub        | Pending | Download all GH scan files for all repos (based on key) | 
+ | GitHub        | Work IP | Download all GH scan files for all repos (based on key) | 
  | DefectDojo    | Done    | Fetch and list products, engagements, tests, and product API scan configurations via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Done    | Upload all files to DD via API                     |
@@ -85,6 +86,6 @@
  2. Implement individual tool functions and test.
  3. Update this README.md after each development step.
 
- ###
- - Current tasks: Github File Downloads
- - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), 
+ ### 
+ - Current tasks: 
+ - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), revisit secret scanning when DD Pro is up.

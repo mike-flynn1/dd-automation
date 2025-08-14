@@ -36,6 +36,7 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
 $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'modules\Logging.ps1')
 . (Join-Path $scriptDir 'modules\Config.ps1')
+. (Join-Path $scriptDir 'GitHub.ps1')
 . (Join-Path $scriptDir 'TenableWAS.ps1')
 . (Join-Path $scriptDir 'EnvValidator.ps1')
 . (Join-Path $scriptDir 'DefectDojo.ps1')
@@ -83,12 +84,12 @@ function Initialize-GuiElements {
     # Script-level scope allows these variables to be accessed by event handlers
     $script:form = New-Object System.Windows.Forms.Form
     $script:chkBoxes = @{}
-    $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo')
+    $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo','GitHub')
 
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(620, 700)
+    $form.Size = New-Object System.Drawing.Size(620, 730)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
@@ -99,16 +100,31 @@ function Initialize-GuiElements {
     $grpTools.Location = New-Object System.Drawing.Point(10, 10)
     $form.Controls.Add($grpTools)
 
+    # Create tooltip for checkboxes
+    $script:toolTip = New-Object System.Windows.Forms.ToolTip
+    $script:toolTip.ShowAlways = $true
+
     # Tool Checkboxes
     for ($i = 0; $i -lt $tools.Count; $i++) {
         $name = $tools[$i]
         $chk = New-Object System.Windows.Forms.CheckBox
         $chk.Text = $name
         $chk.AutoSize = $true
-        $chk.Location = New-Object System.Drawing.Point((10 + ($i * 140)), 20)
+        $x = 10 + ($i % 3) * 140 # 3 checkboxes per row
+        $y = 20 + [Math]::Floor($i / 3) * 30 # Move to next row after 3 checkboxes
+        $chk.Location = New-Object System.Drawing.Point($x, $y)
         $chk.Checked = $true
         $grpTools.Controls.Add($chk)
         $chkBoxes[$name] = $chk
+        
+        # Add tooltips for each checkbox
+        switch ($name) {
+            'TenableWAS' { $script:toolTip.SetToolTip($chk, "Export and upload web application security scan results") }
+            'SonarQube' { $script:toolTip.SetToolTip($chk, "Process code quality and security analysis results") }
+            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Upload web application security scan XML reports") }
+            'DefectDojo' { $script:toolTip.SetToolTip($chk, "Vulnerability management and tracking platform") }
+            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL security analysis reports") }
+        }
     }
 
     # BurpSuite Controls
@@ -143,7 +159,7 @@ function Initialize-GuiElements {
     $script:cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
 
     # Status ListBox
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 180); Location = New-Object System.Drawing.Point(10, 420) }
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 180); Location = New-Object System.Drawing.Point(10, 450) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
@@ -178,6 +194,12 @@ function Register-EventHandlers {
     $chkBoxes['SonarQube'].Add_CheckedChanged({
         $script:cmbDDTestSonar.Enabled = $this.Checked -and $script:cmbDDTestSonar.Items.Count -gt 0
         $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
+    })
+    $chkBoxes['GitHub'].Add_CheckedChanged({
+        # GitHub will use the selected engagement, no separate test selection needed
+    })
+    $chkBoxes['DefectDojo'].Add_CheckedChanged({
+        $script:cmbDDSeverity.Enabled = $this.Checked
     })
 
     # Browse for BurpSuite folder
@@ -240,7 +262,6 @@ function Handle-EngagementChange {
         $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
         $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
-
         if (-not $tests) {
             Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
         }
@@ -376,6 +397,11 @@ function Invoke-Automation {
             Process-SonarQube -Config $config
         }
 
+        # Process GitHub CodeQL 
+        if ($config.Tools.GitHub) {
+            Process-GitHubCodeQL -Config $config
+        }
+
         # Save DefectDojo selections back to config
         if ($config.Tools.DefectDojo) {
             Save-DefectDojoConfig -Config $config
@@ -437,6 +463,75 @@ function Process-SonarQube {
         Write-GuiMessage "SonarQube processing completed for test $($test.Name)"
     } catch {
         Write-GuiMessage "SonarQube processing failed: $_" 'ERROR'
+    }
+}
+
+function Process-GitHubCodeQL {
+    param([hashtable]$Config)
+    Write-GuiMessage "Starting GitHub CodeQL download..."
+    try {
+        GitHub-CodeQLDownload -Owner $Config.GitHub.org
+        Write-GuiMessage "GitHub CodeQL download completed."
+
+        if ($Config.Tools.DefectDojo) {
+            Write-GuiMessage "Uploading GitHub CodeQL reports to DefectDojo..."
+            $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
+            $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
+            $uploadErrors = 0
+            
+            foreach ($file in $sarifFiles) {
+                try {
+                    # Extract service name from SARIF file
+                    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                    
+                    # Remove numeric suffixes
+                    $serviceName = $fileName -replace '-\d+$', ''
+
+                    # Check if test exists, create if not
+                    $engagement = $script:cmbDDEng.SelectedItem
+                    $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
+                    $existingTest = $existingTests | Where-Object { $_.title -eq $serviceName }
+                    
+                    if (-not $existingTest) {
+                        Write-GuiMessage "Creating new test: $serviceName"
+                        try {
+                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20 #hard coded in DD why
+                            Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
+                        } catch {
+                            Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
+                            continue
+                        }
+                        #Upload with new test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                    } else {
+                        Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
+                        #Upload with existing test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                    }
+
+                    
+                } catch {
+                    $uploadErrors++
+                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
+                }
+            }
+            
+            if ($uploadErrors -eq 0) {
+                Write-GuiMessage "GitHub CodeQL reports uploaded successfully to DefectDojo"
+                # Clean up downloaded files after successful uploads
+                try {
+                    Write-GuiMessage "Cleaning up downloaded GitHub CodeQL files..."
+                    Remove-Item -Path $downloadRoot -Recurse -Force
+                    Write-GuiMessage "GitHub CodeQL download directory cleaned up successfully"
+                } catch {
+                    Write-GuiMessage "Failed to clean up download directory: $_" 'WARNING'
+                }
+            } else {
+                Write-GuiMessage "GitHub CodeQL upload completed with $uploadErrors error(s). Download files retained for review." 'WARNING'
+            }
+        }
+    } catch {
+        Write-GuiMessage "GitHub CodeQL processing failed: $_" 'ERROR'
     }
 }
 
