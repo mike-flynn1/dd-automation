@@ -119,11 +119,11 @@ function Initialize-GuiElements {
         
         # Add tooltips for each checkbox
         switch ($name) {
-            'TenableWAS' { $script:toolTip.SetToolTip($chk, "Export and upload web application security scan results") }
-            'SonarQube' { $script:toolTip.SetToolTip($chk, "Process code quality and security analysis results") }
-            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Upload web application security scan XML reports") }
-            'DefectDojo' { $script:toolTip.SetToolTip($chk, "Vulnerability management and tracking platform") }
-            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL security analysis reports") }
+            'TenableWAS' { $script:toolTip.SetToolTip($chk, "This checkbox downloads the specified Tenable scan to the Temp Directory specified in the log file.") }
+            'SonarQube' { $script:toolTip.SetToolTip($chk, "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo") }
+            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Not yet functional") }
+            'DefectDojo' { $script:toolTip.SetToolTip($chk, "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload.") }
+            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports, uploads to DefectDojo (if checked) to individual tests within the specified engagement.") }
         }
     }
 
