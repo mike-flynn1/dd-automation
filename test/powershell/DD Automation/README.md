@@ -65,6 +65,24 @@
  6. Press Go.
  7. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
 
+### Manual Upload (DefectDojo CLI)
+
+This feature allows you to launch the DefectDojo CLI tool for manual uploads that don't conform to the standard automation template.
+
+**Purpose**: Enables manual uploads for specialized scenarios or custom file formats not handled by the automated workflows.
+
+**How to use**: 
+1. Click the "Launch DefectDojo CLI" button in the GUI
+2. A separate console window will open running `modules\defectdojo-cli.exe`
+3. Use the DefectDojo CLI tool directly for your upload needs
+
+**Behavior**: 
+- No arguments or context are passed to the DefectDojo CLI
+- The console window remains open after the tool completes
+- This feature operates independently of the main automation workflow
+
+**Troubleshooting**: If clicking the button doesn't open anything, ensure the EXE is present at `modules\defectdojo-cli.exe`.
+
 
 ## Modules
 
@@ -88,4 +106,4 @@
 
  ### 
  - Current tasks: 
- - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), revisit secret scanning when DD Pro is up.
+ - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use DefectDojo CLIing), revisit secret scanning when DD Pro is up.
