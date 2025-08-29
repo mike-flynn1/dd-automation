@@ -341,6 +341,20 @@ function Prepopulate-FormFromConfig {
                         $script:cmbDDEng.SelectedItem = $selectedEngagement
                         Handle-EngagementChange
                         $script:form.Update()
+                        
+                        # Pre-select test dropdowns after engagement is loaded
+                        if ($Config.DefectDojo.TenableWASTestId) {
+                            $selectedTenableTest = $script:cmbDDTestTenable.Items | Where-Object { $_.Id -eq $Config.DefectDojo.TenableWASTestId }
+                            if ($selectedTenableTest) { $script:cmbDDTestTenable.SelectedItem = $selectedTenableTest }
+                        }
+                        if ($Config.DefectDojo.SonarQubeTestId) {
+                            $selectedSonarTest = $script:cmbDDTestSonar.Items | Where-Object { $_.Id -eq $Config.DefectDojo.SonarQubeTestId }
+                            if ($selectedSonarTest) { $script:cmbDDTestSonar.SelectedItem = $selectedSonarTest }
+                        }
+                        if ($Config.DefectDojo.BurpSuiteTestId) {
+                            $selectedBurpTest = $script:cmbDDTestBurp.Items | Where-Object { $_.Id -eq $Config.DefectDojo.BurpSuiteTestId }
+                            if ($selectedBurpTest) { $script:cmbDDTestBurp.SelectedItem = $selectedBurpTest }
+                        }
                     }
                 }
             }
