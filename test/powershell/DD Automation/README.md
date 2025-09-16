@@ -9,6 +9,8 @@
 
  The solution is modular, extensible, and designed for easy addition of new tools (e.g., GitHub).
 
+ Detailed help article in the Cyber Engineering Wiki [here](https://bamtech.visualstudio.com/BAM-IT/_wiki/wikis/BAM-IT.wiki/2729/DefectDojo-PowerShell-Tool-Overview). 
+
  ## Prerequisites
  - Windows 10 or 11
  - PowerShell 7.2 or later
@@ -41,11 +43,16 @@
      - Scan ID for Tenable WAS scan (Add where can be found) (possible future feature add to grab this from scan list)
      - Burp Scan #? to export from API?
 
- ### PowerShell Config
- An example configuration file is provided at `config/config.psd1.example`. Copy it to `config\\config.psd1` and update the values as needed. This file is ignored by Git, allowing personal overrides. 
- 
+### PowerShell Config
+An example configuration file is provided at `config/config.psd1.example`. Copy it to `config\\config.psd1` and update the values as needed. This file is ignored by Git, allowing personal overrides. 
+
+### GitHub Configuration
+- Populate `GitHub = @{ Orgs = @('your-org-1','your-org-2') }` in your config file.
+- Supply one organization for single-tenant use or add multiple entries to process each org sequentially when `GitHub` is selected in the GUI.
+- Ensure `GITHUB_PAT` has access to every listed organization (CodeQL/Secret Scanning permissions as required).
+
 ## Folder Structure
- ```
+```
  ├── config/         # User-specific config PSD1 files
  ├── logs/           # Timestamped log files
  ├── modules/        # Individual function .ps1 files
@@ -76,7 +83,7 @@
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
  | SonarQube     | Done    | Fetch issues via SonarQube API - or use existing DD Integration                    |
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
- | GitHub        | Work IP | Download all GH scan files for all repos (based on key) | 
+ | GitHub        | Work IP | Download GitHub scans for every org configured in `GitHub.Orgs` | 
  | DefectDojo    | Done    | Fetch and list products, engagements, tests, and product API scan configurations via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Done    | Upload all files to DD via API                     |

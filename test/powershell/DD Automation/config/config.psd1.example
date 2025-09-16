@@ -36,9 +36,12 @@
         APIScanConfigId = 1
     }
 
-    # GitHub Organization
+    # GitHub Organizations to process (one or many)
     GitHub = @{
-    org = 'BAMTech-MyVector'
-}
+        Orgs = @(
+            'BAMTech-MyVector'
+            #'Example-AnotherOrg'
+        )
+    }
 
 }

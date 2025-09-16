@@ -484,7 +484,15 @@ function Process-GitHubCodeQL {
     param([hashtable]$Config)
     Write-GuiMessage "Starting GitHub CodeQL download..."
     try {
-        GitHub-CodeQLDownload -Owner $Config.GitHub.org
+        $orgs = @($Config.GitHub.Orgs)
+        if (-not $orgs -or $orgs.Count -eq 0) {
+            Write-GuiMessage "No GitHub organizations configured. Skipping GitHub processing." 'WARNING'
+            return
+        }
+
+        Write-GuiMessage ("Processing GitHub organizations: {0}" -f ($orgs -join ', '))
+
+        GitHub-CodeQLDownload -Owners $orgs
         Write-GuiMessage "GitHub CodeQL download completed."
 
         if ($Config.Tools.DefectDojo) {
@@ -492,6 +500,12 @@ function Process-GitHubCodeQL {
             $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
             $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
             $uploadErrors = 0
+            $engagement = $script:cmbDDEng.SelectedItem
+            if (-not $engagement) {
+                Write-GuiMessage "No DefectDojo engagement selected; skipping GitHub uploads." 'WARNING'
+                return
+            }
+            $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
             
             foreach ($file in $sarifFiles) {
                 try {
@@ -499,18 +513,25 @@ function Process-GitHubCodeQL {
                     $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
                     
                     # Remove numeric suffixes
-                    $serviceName = $fileName -replace '-\d+$', ''
+                    $baseServiceName = $fileName -replace '-\d+$', ''
+                    $orgMatch = $null
+                    $repoNameOnly = $baseServiceName
+                    if ($baseServiceName -match '^(?<org>[^-]+)-(?<repo>.+)$') {
+                        $orgMatch = $Matches['org']
+                        $repoNameOnly = $Matches['repo']
+                    }
+
+                    $serviceName = if ($orgs.Count -gt 1 -and $orgMatch) { "$orgMatch-$repoNameOnly" } else { $repoNameOnly }
 
                     # Check if test exists, create if not
-                    $engagement = $script:cmbDDEng.SelectedItem
-                    $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
-                    $existingTest = $existingTests | Where-Object { $_.title -eq $serviceName }
+                    $existingTest = $existingTests | Where-Object { $_.title -in @($serviceName, $repoNameOnly) } | Select-Object -First 1
                     
                     if (-not $existingTest) {
                         Write-GuiMessage "Creating new test: $serviceName"
                         try {
                             $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20 #hard coded in DD why
                             Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
+                            $existingTests += $newTest
                         } catch {
                             Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
                             continue

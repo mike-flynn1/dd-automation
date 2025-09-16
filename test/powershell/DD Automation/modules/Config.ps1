@@ -74,8 +74,23 @@ function Validate-Config {
     }
 
     # Validate GitHub keys
-    if ($Config.GitHub -isnot [hashtable] -or -not $Config.GitHub.ContainsKey('org')) {
-        $errors += "Configuration.GitHub missing key: org"
+    if ($Config.GitHub -isnot [hashtable] -or -not $Config.GitHub.ContainsKey('Orgs')) {
+        $errors += "Configuration.GitHub missing key: Orgs"
+    }
+    else {
+        $orgs = $Config.GitHub.Orgs
+        if ($orgs -isnot [System.Collections.IEnumerable] -or $orgs -is [string]) {
+            $errors += 'Configuration.GitHub.Orgs must be an array of organization names'
+        }
+        else {
+            $orgList = @($orgs)
+            if ($orgList.Count -eq 0) {
+                $errors += 'Configuration.GitHub.Orgs must contain at least one organization'
+            }
+            elseif ($orgList | Where-Object { [string]::IsNullOrWhiteSpace($_) }) {
+                $errors += 'Configuration.GitHub.Orgs contains blank organization names'
+            }
+        }
     }
 
     if ($errors.Count -gt 0) {
@@ -162,18 +177,30 @@ function Save-Config {
     if ($Config.ContainsKey('GitHub')) {
         $sb.AppendLine('') | Out-Null
         $sb.AppendLine('    GitHub = @{') | Out-Null
-        foreach ($key in $Config.GitHub.Keys) {
+        foreach ($key in $Config.GitHub.Keys | Sort-Object) {
             $val = $Config.GitHub[$key]
-            if ($null -eq $val -or $val -is [string]) {
-                $inner = if ($null -eq $val) { '' } else { $val }
-                $sb.AppendLine("        $key = '$inner'") | Out-Null
-            } else {
+            if ($null -eq $val) {
+                $sb.AppendLine("        $key = @()") | Out-Null
+                continue
+            }
+
+            if ($val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($entry in $val) {
+                    $sb.AppendLine("            '$entry'") | Out-Null
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            elseif ($val -is [string]) {
+                $sb.AppendLine("        $key = '$val'") | Out-Null
+            }
+            else {
                 $sb.AppendLine("        $key = $val") | Out-Null
             }
         }
         $sb.AppendLine('    }') | Out-Null
     }
-    
+
     $sb.AppendLine('}') | Out-Null
 
     try {
