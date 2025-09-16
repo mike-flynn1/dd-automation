@@ -138,15 +138,25 @@ function Initialize-GuiElements {
     $script:txtTenable = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(370, 20); Location = New-Object System.Drawing.Point(150, 178) }
     $form.Controls.AddRange(@($lblTenable, $txtTenable))
 
+    # GitHub organization controls
+    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs (comma-separated):'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 210) }
+    $script:txtGitHubOrgs = New-Object System.Windows.Forms.TextBox -Property @{
+        Location = New-Object System.Drawing.Point(200, 208)
+        Size     = New-Object System.Drawing.Size(330, 20)
+        Enabled  = $true
+    }
+    $form.Controls.AddRange(@($lblGitHubOrgs, $script:txtGitHubOrgs))
+    $script:toolTip.SetToolTip($script:txtGitHubOrgs, 'Enter one or more GitHub organizations, separated by commas.')
+
     # DefectDojo Controls
     $ddControls = @{
-        lblDDProduct      = [Tuple]::Create('DefectDojo Product:', 210)
-        lblDDEng          = [Tuple]::Create('Engagement:', 240)
-        lblDDApiScan      = [Tuple]::Create('API Scan Config:', 270)
-        lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 300)
-        lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 330)
-        lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 360)
-        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 390)
+        lblDDProduct      = [Tuple]::Create('DefectDojo Product:', 240)
+        lblDDEng          = [Tuple]::Create('Engagement:', 270)
+        lblDDApiScan      = [Tuple]::Create('API Scan Config:', 300)
+        lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 330)
+        lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 360)
+        lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 390)
+        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 420)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -197,6 +207,7 @@ function Register-EventHandlers {
     })
     $chkBoxes['GitHub'].Add_CheckedChanged({
         # GitHub will use the selected engagement, no separate test selection needed
+        $script:txtGitHubOrgs.Enabled = $this.Checked
     })
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
@@ -316,6 +327,9 @@ function Prepopulate-FormFromConfig {
             $script:chkBoxes[$tool].Checked = [bool]$Config.Tools[$tool]
         }
     }
+    if ($Config.Tools.ContainsKey('GitHub')) {
+        $script:txtGitHubOrgs.Enabled = [bool]$Config.Tools['GitHub']
+    }
 
     if ($Config.TenableWASScanId ) {
         $script:txtTenable.Text = $Config.TenableWASScanId
@@ -323,6 +337,23 @@ function Prepopulate-FormFromConfig {
 
     if ($Config.Paths.ContainsKey('BurpSuiteXmlFolder')) {
         $script:txtBurp.Text = $Config.Paths.BurpSuiteXmlFolder
+    }
+
+    if ($Config.GitHub -and $Config.GitHub.Orgs) {
+        $orgList = @($Config.GitHub.Orgs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() })
+        if ($orgList.Count -gt 0) {
+            $orgText = $orgList -join ', '
+            $script:txtGitHubOrgs.Text = $orgText
+            Write-GuiMessage ("Loaded GitHub organizations from config: {0}" -f $orgText)
+        }
+        else {
+            $script:txtGitHubOrgs.Clear()
+            Write-GuiMessage 'No GitHub organizations found in config; textbox cleared.' 'WARNING'
+        }
+    }
+    else {
+        $script:txtGitHubOrgs.Clear()
+        Write-GuiMessage 'GitHub configuration block missing or empty; textbox cleared.' 'WARNING'
     }
 
     if ($Config.DefectDojo) {
@@ -398,6 +429,40 @@ function Invoke-Automation {
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
         if ($script:txtTenable.Text) { $config.TenableWASScanId = $script:txtTenable.Text }
+
+        $existingGitHubOrgs = @($config.GitHub.Orgs)
+        $githubInput = $script:txtGitHubOrgs.Text
+        $parsedGitHubOrgs = @()
+        if ($null -ne $githubInput) {
+            $parsedGitHubOrgs = @($githubInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+
+        if ($parsedGitHubOrgs.Count -gt 0) {
+            $orgSummary = $parsedGitHubOrgs -join ', '
+            Write-GuiMessage ("Using GitHub organizations from textbox: {0}" -f $orgSummary)
+
+            $differences = Compare-Object -ReferenceObject $existingGitHubOrgs -DifferenceObject $parsedGitHubOrgs
+            $config.GitHub.Orgs = $parsedGitHubOrgs
+
+            if ($differences) {
+                try {
+                    Write-GuiMessage ("Saving GitHub organizations to config: {0}" -f $orgSummary)
+                    Save-Config -Config $config
+                    Write-GuiMessage 'GitHub organization configuration saved.'
+                } catch {
+                    Write-GuiMessage "Failed to save GitHub organization configuration: $_" 'ERROR'
+                }
+            }
+            else {
+                Write-GuiMessage 'GitHub organization list unchanged; no config save required.'
+            }
+        }
+        else {
+            Write-GuiMessage 'GitHub organization textbox is empty; retaining existing configuration values.' 'WARNING'
+            if ($config.GitHub.Orgs) {
+                $script:txtGitHubOrgs.Text = ($config.GitHub.Orgs -join ', ')
+            }
+        }
 
         Write-GuiMessage "Selected Tools: $(($script:tools | Where-Object { $config.Tools[$_] }) -join ', ')"
 
@@ -644,3 +709,4 @@ function Main {
 Main
 
 #endregion Script Entry Point
+

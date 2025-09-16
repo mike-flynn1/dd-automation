@@ -50,6 +50,7 @@ An example configuration file is provided at `config/config.psd1.example`. Copy 
 - Populate `GitHub = @{ Orgs = @('your-org-1','your-org-2') }` in your config file.
 - Supply one organization for single-tenant use or add multiple entries to process each org sequentially when `GitHub` is selected in the GUI.
 - Ensure `GITHUB_PAT` has access to every listed organization (CodeQL/Secret Scanning permissions as required).
+- The launcher exposes a `GitHub Orgs` textbox populated from the config; update the comma-separated list there to override and persist organizations without editing the PSD1 manually.
 
 ## Folder Structure
 ```
