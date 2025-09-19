@@ -139,9 +139,9 @@ function Initialize-GuiElements {
     $form.Controls.AddRange(@($lblTenable, $txtTenable))
 
     # GitHub organization controls
-    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs (comma-separated):'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 210) }
+    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 210) }
     $script:txtGitHubOrgs = New-Object System.Windows.Forms.TextBox -Property @{
-        Location = New-Object System.Drawing.Point(200, 208)
+        Location = New-Object System.Drawing.Point(150, 208)
         Size     = New-Object System.Drawing.Size(330, 20)
         Enabled  = $true
     }
