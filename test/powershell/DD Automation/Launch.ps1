@@ -255,8 +255,12 @@ function Handle-EngagementChange {
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
             }
-            $cmb.DisplayMember = 'Name'; $cmb.ValueMember = 'Id'
+            $cmb.ValueMember = 'Id'
         }
+        # Set DisplayMember based on needed display, Title works for most Dojo tests
+        $script:cmbDDTestTenable.DisplayMember = 'Title'   # Show test title for TenableWAS
+        $script:cmbDDTestSonar.DisplayMember = 'Title'     # Show test type title for SonarQube
+        $script:cmbDDTestBurp.DisplayMember = 'Title'      # Show test type title for BurpSuite
 
         # Re-evaluate enabled state based on tool selection and if tests were found
         $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
