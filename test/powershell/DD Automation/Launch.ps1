@@ -508,7 +508,10 @@ function Process-GitHubCodeQL {
                     $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
 
                     # Remove numeric suffixes
-                    $serviceName = $fileName -replace '-\d+$', ''
+                    $repoName = $fileName -replace '-\d+$', ''
+
+                    # Append tool type to test name
+                    $serviceName = "$repoName (CodeQL)"
 
                     # Check if test exists, create if not
                     $engagement = $script:cmbDDEng.SelectedItem
@@ -575,7 +578,10 @@ function Process-GitHubSecretScanning {
                 try {
                     # Extract service name from JSON file (remove -secrets.json suffix)
                     $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
-                    $serviceName = $fileName -replace '-secrets$', ''
+                    $repoName = $fileName -replace '-secrets$', ''
+
+                    # Append tool type to test name
+                    $serviceName = "$repoName (Secret Scanning)"
 
                     # Check if test exists, create if not
                     $engagement = $script:cmbDDEng.SelectedItem
