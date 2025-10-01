@@ -4,10 +4,12 @@
  This PowerShell-based toolset automates the export and import of security findings between various tools:
  - Tenable WAS → Defect Dojo
  - SonarQube → Defect Dojo (reimport direct from Defect Dojo)
+ - GitHub CodeQL SARIF reports → Defect Dojo (Implemented)
+ - GitHub Secret Scanning JSON → Defect Dojo (Implemented)
+ - GitHub Dependabot → Defect Dojo (not Implemented)
  - Burp Suite XML report parsing → Defect Dojo (not Implemented)
- - GitHub CodeQL, Secret Scanning, DependaBot → Defect Dojo (not Implemented)
 
- The solution is modular, extensible, and designed for easy addition of new tools (e.g., GitHub).
+ The solution is modular, extensible, and designed for easy addition of new tools.
 
  ## Prerequisites
  - Windows 10 or 11
@@ -65,6 +67,36 @@
  6. Press Go.
  7. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
 
+## GitHub Integration
+
+The GitHub integration automatically downloads and processes security findings from GitHub Advanced Security features:
+
+### Features
+- **CodeQL SARIF Reports**: Downloads the latest CodeQL code scanning analyses for all repositories in configured organizations
+- **Secret Scanning JSON**: Downloads open secret scanning alerts for all repositories with Secret Scanning enabled
+
+### How It Works
+1. When the GitHub checkbox is selected in the GUI, the tool iterates through all repositories in the configured GitHub organization(s)
+2. For each repository:
+   - Downloads the latest CodeQL SARIF report (if CodeQL is enabled and has results)
+   - Downloads open Secret Scanning alerts as JSON (if Secret Scanning is enabled)
+3. Creates separate DefectDojo tests for each scan type with naming convention:
+   - CodeQL tests: `repository-name (CodeQL)`
+   - Secret Scanning tests: `repository-name (Secret Scanning)`
+4. Files are temporarily stored in system temp directories before upload:
+   - CodeQL: `%TEMP%\GitHubCodeScanning\`
+   - Secret Scanning: `%TEMP%\GitHubSecretScanning\`
+
+### Configuration
+- Set the `GITHUB_PAT` environment variable with a Personal Access Token that has access to all configured organizations
+- Configure organization names in `config/config.psd1` under the `GitHub.org` property (array of strings for multiple orgs)
+- The tool automatically handles repositories without Advanced Security enabled by logging warnings and skipping
+
+### Limitations
+- Dependabot integration is not yet implemented (May implement via Dependabot integration with DD)
+- Only processes the latest analysis per CodeQL category
+- Only retrieves open secret scanning alerts (not resolved/closed)
+- Requires GitHub Advanced Security features to be enabled on target repositories
 
 ## Modules
 
@@ -76,7 +108,7 @@
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
  | SonarQube     | Done    | Fetch issues via SonarQube API - or use existing DD Integration                    |
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
- | GitHub        | Work IP | Download all GH scan files for all repos (based on key) | 
+ | GitHub        | Done    | Download GitHub CodeQL SARIF and Secret Scanning JSON for all repos in configured organizations |
  | DefectDojo    | Done    | Fetch and list products, engagements, tests, and product API scan configurations via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Done    | Upload all files to DD via API                     |
@@ -86,6 +118,10 @@
  2. Implement individual tool functions and test.
  3. Update this README.md after each development step.
 
- ### 
- - Current tasks: 
- - Future: guide user through adding env variables to user $PATH, revisit burpsuite folder picker neccessity based on Burp module, reupload burp scan given directory (or use external tooling), revisit secret scanning when DD Pro is up.
+ ###
+ - Current tasks:
+ - Future:
+   - Implement GitHub Dependabot integration
+   - Revisit BurpSuite folder picker necessity based on Burp module
+   - Reupload burp scan given directory (or use external tooling)
+   - Revisit local file uploads via command line tool use
