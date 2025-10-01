@@ -598,11 +598,11 @@ function Process-GitHubSecretScanning {
                             continue
                         }
                         #Upload with new test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Github Secret Scan' -CloseOldFindings $true
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $true
                     } else {
                         Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
                         #Upload with existing test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Github Secret Scan' -CloseOldFindings $true
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $true
                     }
                 } catch {
                     $uploadErrors++
