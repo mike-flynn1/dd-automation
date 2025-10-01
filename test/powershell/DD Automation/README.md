@@ -24,8 +24,8 @@
  1. Clone this repository to your local machine.
  2. Ensure you have set the following environment variables:
 - `DOJO_API_KEY` for Defect Dojo
-- `TENWAS_API_KEY` for Tenable WAS (Access Key)
-- `TENWAS_API_SECRET` for Tenable WAS (Secret Key)
+- `TENWAS_ACCESS_KEY` for Tenable WAS (Access Key)
+- `TENWAS_SECRET_KEY` for Tenable WAS (Secret Key)
 - `GITHUB_PAT` for GitHub repos 
  3.Create a custom `config\yourconfig.psd1` file with tool-specific settings / URLs.
 
@@ -66,6 +66,136 @@
  5. All checkboxes have tooltips to display their functionality. 
  6. Press Go.
  7. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
+
+## Tenable WAS Integration
+
+The Tenable WAS (Web Application Scanning) integration exports vulnerability scan results from Tenable's cloud-based platform and optionally uploads them to DefectDojo for centralized vulnerability management.
+
+### Features
+- **Automated Report Generation**: Initiates report generation via Tenable WAS API for a specified scan
+- **CSV Export**: Downloads scan results in CSV format suitable for DefectDojo import
+- **Direct DefectDojo Upload**: Automatically uploads exported scan reports to a designated DefectDojo test when DefectDojo integration is enabled
+- **Configurable Scan Selection**: Supports scan ID specification via GUI input or configuration file
+
+### How It Works
+1. When the Tenable WAS checkbox is selected in the GUI, the user must provide a Scan ID from the Tenable WAS website (GUID format)
+2. The tool makes a two-step API request to Tenable WAS:
+   - **PUT request** to `/was/v2/scans/{scanId}/report` to initiate report generation
+   - **GET request** to the same endpoint (after 2-second delay) to download the generated CSV report
+3. The CSV file is temporarily saved to the system temp directory with naming convention: `{scanId}-report.csv`
+4. If the DefectDojo checkbox is also selected:
+   - The tool uploads the CSV report to the specifically selected Tenable WAS test in DefectDojo
+   - Uses the "Tenable Scan" scan type for proper parsing by DefectDojo
+   - Upload is performed via DefectDojo's `/reimport-scan/` endpoint
+
+### Configuration
+**Environment Variables** (Required):
+- `TENWAS_ACCESS_KEY`: Your Tenable WAS API access key
+- `TENWAS_SECRET_KEY`: Your Tenable WAS API secret key
+- `DOJO_API_KEY`: DefectDojo API token (only required if uploading to DefectDojo)
+
+**Config File** (`config/config.psd1`):
+```powershell
+ApiBaseUrls = @{
+    TenableWAS = 'https://fedcloud.tenable.com/'  # Tenable cloud endpoint
+}
+
+TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'  # Optional: Default scan ID
+
+DefectDojo = @{
+    TenableWASTestId = 123  # Optional: Pre-selected test ID for uploads
+}
+```
+
+**GUI Inputs**:
+- **Tenable WAS Scan ID**: Required field in the GUI to specify which scan to export
+- **DD Test (Tenable WAS)**: Dropdown to select the specific DefectDojo test for upload (populated from selected engagement)
+
+### File Locations
+- **Exported Reports**: `%TEMP%\{scanId}-report.csv` (Windows temporary directory)
+- **API Endpoint**: `https://fedcloud.tenable.com/was/v2/scans/{scanId}/report`
+
+### Finding Scan IDs
+Tenable WAS Scan IDs can be found in the Tenable.io web interface:
+1. Navigate to Tenable.io > Web Application Scanning
+2. Select your scan from the list
+3. The Scan ID (GUID format) appears in the URL
+
+### Limitations
+- Only exports completed scans (cannot export in-progress scans)
+- Scan ID must be manually specified for each export (no automatic scan list retrieval yet)
+
+## SonarQube Integration
+
+The SonarQube integration leverages DefectDojo's built-in SonarQube API Import feature to directly import code quality and security findings from SonarQube without manual file downloads. This integration uses DefectDojo's Product API Scan Configuration system.
+
+### Features
+- **API-based Import**: Uses DefectDojo's native "SonarQube API Import" scan type for direct API integration
+- **No File Downloads Required**: Bypasses manual export/import workflow by using DefectDojo's API scan configuration
+- **Re-import Support**: Updates existing test results with latest SonarQube findings via DefectDojo's `/reimport-scan/` endpoint
+- **Configurable Severity Filtering**: Honors minimum severity settings from configuration
+
+### How It Works
+1. **Pre-requisite**: A Product API Scan Configuration must be created in DefectDojo first
+   - In DefectDojo UI: Product > Settings > API Scan Configurations
+   - Configure with SonarQube project key, API token, and endpoint URL
+   - The tool retrieves available configurations via `/product_api_scan_configurations/` endpoint
+2. When the SonarQube checkbox is selected in the GUI:
+   - User selects a pre-configured API Scan Configuration from the dropdown (shows SonarQube project keys)
+   - User selects the target DefectDojo test for import
+3. The tool posts to DefectDojo's `/reimport-scan/` endpoint with:
+   - `scan_type`: "SonarQube API Import"
+   - `api_scan_configuration`: The selected configuration ID
+   - `test`: The target test ID
+   - `minimum_severity`: From configuration (default: "Low")
+4. DefectDojo handles the SonarQube API communication and finding import internally
+
+### Configuration
+**Environment Variables** (Required):
+- `DOJO_API_KEY`: DefectDojo API token with permissions to reimport scans
+
+**Config File** (`config/config.psd1`):
+```powershell
+ApiBaseUrls = @{
+    DefectDojo = 'https://defect-dojo.internal.example.com/api/v2'
+}
+
+DefectDojo = @{
+    MinimumSeverity = 'Low'  # Minimum severity for imported findings
+    APIScanConfigId = 1      # Optional: Pre-selected API scan configuration ID
+    SonarQubeTestId = 456    # Optional: Pre-selected test ID for imports
+}
+```
+
+**DefectDojo Setup** (Required before first use):
+1. In DefectDojo, navigate to the target Product
+2. Go to Settings > Product API Scan Configurations
+3. Create a new configuration with:
+   - **Tool Configuration Name**: Descriptive name
+   - **Tool Type**: SonarQube
+   - **Service Key 1**: SonarQube project key (e.g., "my-project-key")
+   - **API Key**: SonarQube user token with project access
+   - **Additional Fields**: SonarQube server URL if required
+
+**GUI Inputs**:
+- **DD API Scan Configuration**: Dropdown showing available SonarQube configurations
+- **DD Test (SonarQube)**: Dropdown to select the specific DefectDojo test for import (populated from selected engagement)
+
+### Technical Notes
+- This integration does NOT use the `Sonarqube.ps1` module to call SonarQube APIs directly
+- Instead, it uses the `Invoke-SonarQubeProcessing` function which delegates API communication to DefectDojo
+- DefectDojo's API Scan Configuration stores SonarQube credentials securely server-side
+- The tool only orchestrates the reimport request; DefectDojo handles authentication and data retrieval
+
+### Advantages Over Manual Export
+- **No credential management**: SonarQube API tokens stored securely in DefectDojo
+- **No file handling**: Eliminates download/upload workflow and temporary file storage
+- **Automatic updates**: Re-import updates existing findings rather than creating duplicates
+- **Built-in parsing**: Uses DefectDojo's native SonarQube parser for reliable result processing
+
+### Limitations
+- API Scan Configuration must be pre-configured in DefectDojo before using this tool
+- Cannot selectively filter findings before import (all findings for the configured project are imported based on severity threshold)
 
 ## GitHub Integration
 
