@@ -415,9 +415,14 @@ function Invoke-Automation {
             Process-SonarQube -Config $config
         }
 
-        # Process GitHub CodeQL 
+        # Process GitHub CodeQL
         if ($config.Tools.GitHub) {
             Process-GitHubCodeQL -Config $config
+        }
+
+        # Process GitHub Secret Scanning
+        if ($config.Tools.GitHub) {
+            Process-GitHubSecretScanning -Config $config
         }
 
         # Save DefectDojo selections back to config
@@ -496,12 +501,12 @@ function Process-GitHubCodeQL {
             $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
             $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
             $uploadErrors = 0
-            
+
             foreach ($file in $sarifFiles) {
                 try {
                     # Extract service name from SARIF file
                     $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
-                    
+
                     # Remove numeric suffixes
                     $serviceName = $fileName -replace '-\d+$', ''
 
@@ -509,7 +514,7 @@ function Process-GitHubCodeQL {
                     $engagement = $script:cmbDDEng.SelectedItem
                     $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
                     $existingTest = $existingTests | Where-Object { $_.title -eq $serviceName }
-                    
+
                     if (-not $existingTest) {
                         Write-GuiMessage "Creating new test: $serviceName"
                         try {
@@ -527,13 +532,13 @@ function Process-GitHubCodeQL {
                         Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $true
                     }
 
-                    
+
                 } catch {
                     $uploadErrors++
                     Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
                 }
             }
-            
+
             if ($uploadErrors -eq 0) {
                 Write-GuiMessage "GitHub CodeQL reports uploaded successfully to DefectDojo"
                 # Clean up downloaded files after successful uploads
@@ -550,6 +555,71 @@ function Process-GitHubCodeQL {
         }
     } catch {
         Write-GuiMessage "GitHub CodeQL processing failed: $_" 'ERROR'
+    }
+}
+
+function Process-GitHubSecretScanning {
+    param([hashtable]$Config)
+    Write-GuiMessage "Starting GitHub Secret Scanning download..."
+    try {
+        GitHub-SecretScanDownload -Owner $Config.GitHub.org
+        Write-GuiMessage "GitHub Secret Scanning download completed."
+
+        if ($Config.Tools.DefectDojo) {
+            Write-GuiMessage "Uploading GitHub Secret Scanning reports to DefectDojo..."
+            $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubSecretScanning'
+            $jsonFiles = Get-ChildItem -Path $downloadRoot -Filter '*-secrets.json' -Recurse | Select-Object -ExpandProperty FullName
+            $uploadErrors = 0
+
+            foreach ($file in $jsonFiles) {
+                try {
+                    # Extract service name from JSON file (remove -secrets.json suffix)
+                    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                    $serviceName = $fileName -replace '-secrets$', ''
+
+                    # Check if test exists, create if not
+                    $engagement = $script:cmbDDEng.SelectedItem
+                    $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
+                    $existingTest = $existingTests | Where-Object { $_.title -eq $serviceName }
+
+                    if (-not $existingTest) {
+                        Write-GuiMessage "Creating new test: $serviceName"
+                        try {
+                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20
+                            Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
+                        } catch {
+                            Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
+                            continue
+                        }
+                        #Upload with new test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Github Secret Scan' -CloseOldFindings $true
+                    } else {
+                        Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
+                        #Upload with existing test ID
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Github Secret Scan' -CloseOldFindings $true
+                    }
+                } catch {
+                    $uploadErrors++
+                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
+                }
+            }
+
+            if ($uploadErrors -eq 0) {
+                Write-GuiMessage "GitHub Secret Scanning reports uploaded successfully to DefectDojo"
+                # Clean up downloaded files after successful uploads
+                try {
+                    Write-GuiMessage "Cleaning up downloaded GitHub Secret Scanning files..."
+                    Remove-Item -Path $downloadRoot -Recurse -Force
+                    Write-GuiMessage "GitHub Secret Scanning download directory cleaned up successfully"
+                } catch {
+                    Write-GuiMessage "Failed to clean up download directory: $_" 'WARNING'
+                }
+            } else {
+                Write-GuiMessage "GitHub Secret Scanning upload completed with $uploadErrors error(s). Download files retained for review." 'WARNING'
+            }
+        }
+    } catch {
+        Write-GuiMessage "GitHub Secret Scanning processing failed: $_" 'ERROR'
     }
 }
 
