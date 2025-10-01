@@ -123,7 +123,7 @@ function Initialize-GuiElements {
             'SonarQube' { $script:toolTip.SetToolTip($chk, "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo") }
             'BurpSuite' { $script:toolTip.SetToolTip($chk, "Not yet functional") }
             'DefectDojo' { $script:toolTip.SetToolTip($chk, "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload.") }
-            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports, uploads to DefectDojo (if checked) to individual tests within the specified engagement.") }
+            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports and Secret Scanning JSON files, uploads to DefectDojo (if checked) to individual tests within the specified engagement.") }
         }
     }
 
