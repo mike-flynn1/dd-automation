@@ -182,7 +182,7 @@ DefectDojo = @{
 - **DD Test (SonarQube)**: Dropdown to select the specific DefectDojo test for import (populated from selected engagement)
 
 ### Technical Notes
-- This integration does NOT use the `Sonarqube.ps1` module to call SonarQube APIs directly
+- This integration does NOT call SonarQube APIs directly
 - Instead, it uses the `Invoke-SonarQubeProcessing` function which delegates API communication to DefectDojo
 - DefectDojo's API Scan Configuration stores SonarQube credentials securely server-side
 - The tool only orchestrates the reimport request; DefectDojo handles authentication and data retrieval
