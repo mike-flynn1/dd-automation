@@ -591,7 +591,7 @@ function Process-GitHubSecretScanning {
                     if (-not $existingTest) {
                         Write-GuiMessage "Creating new test: $serviceName"
                         try {
-                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20
+                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 215 #also hard coded in DD why
                             Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
                         } catch {
                             Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
