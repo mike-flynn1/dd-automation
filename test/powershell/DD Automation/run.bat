@@ -7,7 +7,7 @@ REM Get the directory of this batch file
 set "SCRIPT_DIR=%~dp0"
 
 REM Run the PowerShell script
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Launch.ps1"
+start powershell -NoExit -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Launch.ps1"
 
 REM Pause to keep window open (optional)
 pause
