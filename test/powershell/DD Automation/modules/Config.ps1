@@ -177,7 +177,14 @@ function Save-Config {
     if ($Config.ContainsKey('GitHub')) {
         $sb.AppendLine('') | Out-Null
         $sb.AppendLine('    GitHub = @{') | Out-Null
-        foreach ($key in $Config.GitHub.Keys | Sort-Object) {
+
+        # Define preferred order for GitHub keys
+        $preferredOrder = @('Orgs', 'SkipArchivedRepos', 'IncludeRepos', 'ExcludeRepos')
+
+        # Process keys in preferred order first
+        foreach ($key in $preferredOrder) {
+            if (-not $Config.GitHub.ContainsKey($key)) { continue }
+
             $val = $Config.GitHub[$key]
             if ($null -eq $val) {
                 $sb.AppendLine("        $key = @()") | Out-Null
@@ -194,10 +201,44 @@ function Save-Config {
             elseif ($val -is [string]) {
                 $sb.AppendLine("        $key = '$val'") | Out-Null
             }
+            elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
+            }
             else {
                 $sb.AppendLine("        $key = $val") | Out-Null
             }
         }
+
+        # Process any remaining keys not in preferred order (for future extensibility)
+        foreach ($key in $Config.GitHub.Keys | Sort-Object) {
+            if ($key -in $preferredOrder) { continue }
+
+            $val = $Config.GitHub[$key]
+            if ($null -eq $val) {
+                $sb.AppendLine("        $key = @()") | Out-Null
+                continue
+            }
+
+            if ($val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($entry in $val) {
+                    $sb.AppendLine("            '$entry'") | Out-Null
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            elseif ($val -is [string]) {
+                $sb.AppendLine("        $key = '$val'") | Out-Null
+            }
+            elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
+            }
+            else {
+                $sb.AppendLine("        $key = $val") | Out-Null
+            }
+        }
+
         $sb.AppendLine('    }') | Out-Null
     }
 
@@ -211,4 +252,4 @@ function Save-Config {
     }
 }
 
-#Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')
+Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')

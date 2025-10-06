@@ -73,6 +73,79 @@ function Get-GitHubRepos {
         }
     }
 
+    # Apply repository filtering
+    $initialCount = $allRepos.Count
+    Write-Log -Message ("Total repositories retrieved before filtering: {0}" -f $initialCount) -Level 'INFO'
+
+    # Filter archived repositories (default: skip archived)
+    $skipArchived = $true
+    if ($config.GitHub.ContainsKey('SkipArchivedRepos') -and $null -ne $config.GitHub.SkipArchivedRepos) {
+        $skipArchived = [bool]$config.GitHub.SkipArchivedRepos
+    }
+    if ($skipArchived) {
+        $archivedRepos = @($allRepos | Where-Object { $_.archived -eq $true })
+        if ($archivedRepos.Count -gt 0) {
+            Write-Log -Message ("Filtering out {0} archived repositories" -f $archivedRepos.Count) -Level 'INFO'
+            foreach ($archivedRepo in $archivedRepos) {
+                Write-Log -Message ("  Skipped (archived): {0}" -f $archivedRepo.name) -Level 'INFO'
+            }
+            $allRepos = @($allRepos | Where-Object { $_.archived -ne $true })
+        }
+    }
+
+    # Apply include filter (whitelist) if specified
+    $includePatterns = @()
+    if ($config.GitHub.ContainsKey('IncludeRepos') -and $config.GitHub.IncludeRepos) {
+        $includePatterns = @($config.GitHub.IncludeRepos | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    if ($includePatterns.Count -gt 0) {
+        Write-Log -Message ("Applying include filter with {0} pattern(s): {1}" -f $includePatterns.Count, ($includePatterns -join ', ')) -Level 'INFO'
+        $includedRepos = @()
+        foreach ($repo in $allRepos) {
+            $included = $false
+            foreach ($pattern in $includePatterns) {
+                if ($repo.name -like $pattern) {
+                    $included = $true
+                    Write-Log -Message ("  Included (matched '{0}'): {1}" -f $pattern, $repo.name) -Level 'INFO'
+                    break
+                }
+            }
+            if ($included) {
+                $includedRepos += $repo
+            } else {
+                Write-Log -Message ("  Skipped (no include match): {0}" -f $repo.name) -Level 'INFO'
+            }
+        }
+        $allRepos = $includedRepos
+    }
+
+    # Apply exclude filter (blacklist) if specified
+    $excludePatterns = @()
+    if ($config.GitHub.ContainsKey('ExcludeRepos') -and $config.GitHub.ExcludeRepos) {
+        $excludePatterns = @($config.GitHub.ExcludeRepos | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    if ($excludePatterns.Count -gt 0) {
+        Write-Log -Message ("Applying exclude filter with {0} pattern(s): {1}" -f $excludePatterns.Count, ($excludePatterns -join ', ')) -Level 'INFO'
+        $filteredRepos = @()
+        foreach ($repo in $allRepos) {
+            $excluded = $false
+            foreach ($pattern in $excludePatterns) {
+                if ($repo.name -like $pattern) {
+                    $excluded = $true
+                    Write-Log -Message ("  Skipped (matched exclude '{0}'): {1}" -f $pattern, $repo.name) -Level 'INFO'
+                    break
+                }
+            }
+            if (-not $excluded) {
+                $filteredRepos += $repo
+            }
+        }
+        $allRepos = $filteredRepos
+    }
+
+    $finalCount = $allRepos.Count
+    Write-Log -Message ("Repositories after filtering: {0} (filtered out {1})" -f $finalCount, ($initialCount - $finalCount)) -Level 'INFO'
+
     return $allRepos
 }
 
