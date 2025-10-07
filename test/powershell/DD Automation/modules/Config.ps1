@@ -74,8 +74,23 @@ function Validate-Config {
     }
 
     # Validate GitHub keys
-    if ($Config.GitHub -isnot [hashtable] -or -not $Config.GitHub.ContainsKey('org')) {
-        $errors += "Configuration.GitHub missing key: org"
+    if ($Config.GitHub -isnot [hashtable] -or -not $Config.GitHub.ContainsKey('Orgs')) {
+        $errors += "Configuration.GitHub missing key: Orgs"
+    }
+    else {
+        $orgs = $Config.GitHub.Orgs
+        if ($orgs -isnot [System.Collections.IEnumerable] -or $orgs -is [string]) {
+            $errors += 'Configuration.GitHub.Orgs must be an array of organization names'
+        }
+        else {
+            $orgList = @($orgs)
+            if ($orgList.Count -eq 0) {
+                $errors += 'Configuration.GitHub.Orgs must contain at least one organization'
+            }
+            elseif ($orgList | Where-Object { [string]::IsNullOrWhiteSpace($_) }) {
+                $errors += 'Configuration.GitHub.Orgs contains blank organization names'
+            }
+        }
     }
 
     if ($errors.Count -gt 0) {
@@ -162,18 +177,71 @@ function Save-Config {
     if ($Config.ContainsKey('GitHub')) {
         $sb.AppendLine('') | Out-Null
         $sb.AppendLine('    GitHub = @{') | Out-Null
-        foreach ($key in $Config.GitHub.Keys) {
+
+        # Define preferred order for GitHub keys
+        $preferredOrder = @('Orgs', 'SkipArchivedRepos', 'IncludeRepos', 'ExcludeRepos')
+
+        # Process keys in preferred order first
+        foreach ($key in $preferredOrder) {
+            if (-not $Config.GitHub.ContainsKey($key)) { continue }
+
             $val = $Config.GitHub[$key]
-            if ($null -eq $val -or $val -is [string]) {
-                $inner = if ($null -eq $val) { '' } else { $val }
-                $sb.AppendLine("        $key = '$inner'") | Out-Null
-            } else {
+            if ($null -eq $val) {
+                $sb.AppendLine("        $key = @()") | Out-Null
+                continue
+            }
+
+            if ($val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($entry in $val) {
+                    $sb.AppendLine("            '$entry'") | Out-Null
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            elseif ($val -is [string]) {
+                $sb.AppendLine("        $key = '$val'") | Out-Null
+            }
+            elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
+            }
+            else {
                 $sb.AppendLine("        $key = $val") | Out-Null
             }
         }
+
+        # Process any remaining keys not in preferred order (for future extensibility)
+        foreach ($key in $Config.GitHub.Keys | Sort-Object) {
+            if ($key -in $preferredOrder) { continue }
+
+            $val = $Config.GitHub[$key]
+            if ($null -eq $val) {
+                $sb.AppendLine("        $key = @()") | Out-Null
+                continue
+            }
+
+            if ($val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($entry in $val) {
+                    $sb.AppendLine("            '$entry'") | Out-Null
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            elseif ($val -is [string]) {
+                $sb.AppendLine("        $key = '$val'") | Out-Null
+            }
+            elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
+            }
+            else {
+                $sb.AppendLine("        $key = $val") | Out-Null
+            }
+        }
+
         $sb.AppendLine('    }') | Out-Null
     }
-    
+
     $sb.AppendLine('}') | Out-Null
 
     try {
@@ -184,4 +252,4 @@ function Save-Config {
     }
 }
 
-#Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')
+Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')

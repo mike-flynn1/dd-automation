@@ -11,6 +11,8 @@
 
  The solution is modular, extensible, and designed for easy addition of new tools.
 
+ Detailed help article in the Cyber Engineering Wiki [here](https://bamtech.visualstudio.com/BAM-IT/_wiki/wikis/BAM-IT.wiki/2729/DefectDojo-PowerShell-Tool-Overview). 
+
  ## Prerequisites
  - Windows 10 or 11
  - PowerShell 7.2 or later
@@ -43,11 +45,69 @@
      - Scan ID for Tenable WAS scan (Add where can be found) (possible future feature add to grab this from scan list)
      - Burp Scan #? to export from API?
 
- ### PowerShell Config
- An example configuration file is provided at `config/config.psd1.example`. Copy it to `config\\config.psd1` and update the values as needed. This file is ignored by Git, allowing personal overrides. 
- 
+### PowerShell Config
+An example configuration file is provided at `config/config.psd1.example`. Copy it to `config\config.psd1` and update the values as needed. This file is ignored by Git, allowing personal overrides. 
+
+### GitHub Configuration
+- Populate `GitHub = @{ Orgs = @('your-org-1','your-org-2') }` in your config file.
+- Supply one organization for single-tenant use or add multiple entries to process each org sequentially when `GitHub` is selected in the GUI.
+- Ensure `GITHUB_PAT` has access to every listed organization (CodeQL/Secret Scanning permissions as required).
+- The launcher exposes a `GitHub Orgs` textbox populated from the config; update the comma-separated list there to override and persist organizations without editing the PSD1 manually.
+
+#### Repository Filtering
+The GitHub integration supports flexible repository filtering to control which repositories are processed:
+
+**Skip Archived Repositories** (default: enabled)
+```powershell
+GitHub = @{
+    SkipArchivedRepos = $true  # Skip archived repos (default: true)
+}
+```
+
+**Include-Only Filter** (whitelist)
+When specified, ONLY repositories matching these patterns will be processed:
+```powershell
+GitHub = @{
+    IncludeRepos = @(
+        'production-*'     # All repos starting with 'production-'
+        'critical-app'     # Exact match
+        '*-api'            # All repos ending with '-api'
+        '*security*'       # Any repo containing 'security'
+    )
+}
+```
+
+**Exclude Filter** (blacklist)
+Repositories matching these patterns will be skipped (applied after include filter):
+```powershell
+GitHub = @{
+    ExcludeRepos = @(
+        'test-*'           # Skip all test repos
+        '*-demo'           # Skip all demo repos
+        'archived-*'       # Skip repos starting with 'archived-'
+        'old-legacy-app'   # Skip specific repo
+    )
+}
+```
+
+**Pattern Matching:**
+- Supports PowerShell wildcards: `*` (matches any characters), `?` (matches single character)
+- Patterns are case-insensitive
+- Examples:
+  - `production-*` matches: `production-app`, `production-api`, `production-web`
+  - `*-test` matches: `myapp-test`, `api-test`, `frontend-test`
+  - `*security*` matches: `security-tools`, `app-security`, `security`
+
+**Filter Order:**
+1. Skip archived repos (if enabled)
+2. Apply include filter (if specified)
+3. Apply exclude filter (if specified)
+
+**Logging:**
+All filtering decisions are logged to `logs/DDAutomationLauncher_Renewed.log` for transparency, showing which repos were skipped and why.
+
 ## Folder Structure
- ```
+```
  ├── config/         # User-specific config PSD1 files
  ├── logs/           # Timestamped log files
  ├── modules/        # Individual function .ps1 files
@@ -238,15 +298,14 @@ The GitHub integration automatically downloads and processes security findings f
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
  | SonarQube     | Done    | Fetch issues via SonarQube API - or use existing DD Integration                    |
  | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
- | GitHub        | Done    | Download GitHub CodeQL SARIF and Secret Scanning JSON for all repos in configured organizations |
+ | GitHub        | Work IP | Download GitHub scans for every org configured in `GitHub.Orgs`. These scans will eventually include CodeQL (Done), Secret Scanning (Done), and Dependabot (TODO) | 
  | DefectDojo    | Done    | Fetch and list products, engagements, tests, and product API scan configurations via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Done    | Upload all files to DD via API                     |
 
  ## Roadmap / Next Steps
- 1. Implement core function scaffolds in `modules/`.
- 2. Implement individual tool functions and test.
- 3. Update this README.md after each development step.
+ 1. Update individual tool functionality as new tools are added / tweaked. 
+ 2. Update this README.md after each development step.
 
  ###
  - Current tasks:
