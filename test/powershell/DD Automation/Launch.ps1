@@ -586,10 +586,11 @@ function Process-GitHubCodeQL {
                         $repoNameOnly = $Matches['repo']
                     }
 
-                    $serviceName = if ($orgs.Count -gt 1 -and $orgMatch) { "$orgMatch-$repoNameOnly" } else { $repoNameOnly }
+                    $serviceNameCore = if ($orgs.Count -gt 1 -and $orgMatch) { "$orgMatch-$repoNameOnly" } else { $repoNameOnly }
+                    $serviceName = "$serviceNameCore (CodeQL)"
 
                     # Check if test exists, create if not
-                    $existingTest = $existingTests | Where-Object { $_.title -in @($serviceName, $repoNameOnly) } | Select-Object -First 1
+                    $existingTest = $existingTests | Where-Object { $_.title -in @($serviceName, $serviceNameCore, $repoNameOnly) } | Select-Object -First 1
                     
                     if (-not $existingTest) {
                         Write-GuiMessage "Creating new test: $serviceName"
@@ -604,7 +605,7 @@ function Process-GitHubCodeQL {
                         #Upload with new test ID
                         Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF' -CloseOldFindings $true
                     } else {
-                        Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
+                        Write-GuiMessage "Using existing test: $($existingTest.Title) (ID: $($existingTest.Id))"
                         #Upload with existing test ID
                         Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $true
                     }
