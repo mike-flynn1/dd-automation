@@ -317,12 +317,46 @@ function Invoke-ExternalTool {
             return
         }
         
+        # Ensure CLI sees expected API token
+        $apiKey = $env:DOJO_API_KEY
+        if ([string]::IsNullOrWhiteSpace($apiKey)) {
+            Write-GuiMessage "DOJO_API_KEY environment variable is not set; cannot launch DefectDojo CLI." 'ERROR'
+            [System.Windows.Forms.MessageBox]::Show(
+                "DOJO_API_KEY is not configured. Please populate the variable and relaunch.",
+                "Missing Environment Variable",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            $script:btnLaunchTool.Enabled = $true
+            return
+        }
+
+        try {
+            [System.Environment]::SetEnvironmentVariable('DD_CLI_API_TOKEN', $apiKey, [System.EnvironmentVariableTarget]::User)
+            $env:DD_CLI_API_TOKEN = $apiKey
+            Write-GuiMessage "DD_CLI_API_TOKEN synchronized with DOJO_API_KEY."
+        } catch {
+            Write-GuiMessage "Failed to set DD_CLI_API_TOKEN: $_" 'ERROR'
+            [System.Windows.Forms.MessageBox]::Show(
+                "Failed to update DD_CLI_API_TOKEN. See log for details.",
+                "Environment Variable Error",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            $script:btnLaunchTool.Enabled = $true
+            return
+        }
+
         # Log before launch
         Write-GuiMessage "Launching DefectDojo CLI: modules\defectdojo-cli.exe"
-        
-        # Launch the tool using cmd.exe /k to keep console open
+
+        # Launch the tool in a PowerShell window and keep it open 
+        # hacky.... but it works
         $workingDirectory = Split-Path $toolPath -Parent
-        Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', "`"$toolPath`"") -WorkingDirectory $workingDirectory
+        $escapedWorkingDir = $workingDirectory.Replace("'", "''")
+        $escapedToolPath = $toolPath.Replace("'", "''")
+        $command = "& { Set-Location -LiteralPath '$escapedWorkingDir'; & '$escapedToolPath' interactive }"
+        Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoExit', '-NoLogo', '-Command', $command) -WorkingDirectory $workingDirectory
         
         # Log after launch
         Write-GuiMessage "DefectDojo CLI launched in a new window (console stays open)."
