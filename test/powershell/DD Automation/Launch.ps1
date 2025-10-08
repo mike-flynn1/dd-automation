@@ -89,7 +89,7 @@ function Initialize-GuiElements {
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(620, 730)
+    $form.Size = New-Object System.Drawing.Size(620, 750)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
@@ -168,18 +168,42 @@ function Initialize-GuiElements {
     }
     $script:cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
 
-    # Status ListBox
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 180); Location = New-Object System.Drawing.Point(10, 450) }
+    # Manual Upload (DefectDojo CLI) GroupBox
+    $grpManualTool = New-Object System.Windows.Forms.GroupBox
+    $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
+    $grpManualTool.Size = New-Object System.Drawing.Size(580, 70)
+    $grpManualTool.Location = New-Object System.Drawing.Point(10, 420)
+    $form.Controls.Add($grpManualTool)
+
+    # Launch DefectDojo CLI Button
+    $script:btnLaunchTool = New-Object System.Windows.Forms.Button
+    $script:btnLaunchTool.Text = 'Launch DefectDojo CLI'
+    $script:btnLaunchTool.Size = New-Object System.Drawing.Size(150, 30)
+    $script:btnLaunchTool.Location = New-Object System.Drawing.Point(10, 20)
+    $grpManualTool.Controls.Add($script:btnLaunchTool)
+
+    # Info label for Manual Upload
+    $lblManualInfo = New-Object System.Windows.Forms.Label
+    $lblManualInfo.Text = 'Opens defectdojo-cli.exe in a new console; no data is passed.'
+    $lblManualInfo.AutoSize = $true
+    $lblManualInfo.Location = New-Object System.Drawing.Point(170, 27)
+    $grpManualTool.Controls.Add($lblManualInfo)
+
+    # Add tooltip for Launch DefectDojo CLI button
+    $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
+
+    # Status ListBox (moved down to accommodate new group)
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 150); Location = New-Object System.Drawing.Point(10, 500) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
-    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(420, 620); Size = New-Object System.Drawing.Size(80, 30) }
-    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(520, 620); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(420, 670); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(520, 670); Size = New-Object System.Drawing.Size(80, 30) }
     
     # Add completion message label
     $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
         Text = ""; 
-        Location = New-Object System.Drawing.Point(10, 625); 
+        Location = New-Object System.Drawing.Point(10, 675); 
         Size = New-Object System.Drawing.Size(400, 25);
         Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
         ForeColor = [System.Drawing.Color]::Green;
@@ -224,6 +248,9 @@ function Register-EventHandlers {
     # DefectDojo dropdowns
     $cmbDDProduct.Add_SelectedIndexChanged({ Handle-ProductChange })
     $cmbDDEng.Add_SelectedIndexChanged({ Handle-EngagementChange })
+
+    # Launch DefectDojo CLI button
+    $btnLaunchTool.Add_Click({ Invoke-ExternalTool })
 
     # Main action buttons
     $btnLaunch.Add_Click({ Invoke-Automation })
@@ -282,6 +309,78 @@ function Handle-EngagementChange {
         }
     } catch {
         Write-GuiMessage "Failed to load tests: $_" 'ERROR'
+    }
+}
+
+function Invoke-ExternalTool {
+    try {
+        # Disable button to prevent double clicks
+        $script:btnLaunchTool.Enabled = $false
+        
+        # Compute tool path
+        $toolPath = Join-Path $PSScriptRoot 'modules\defectdojo-cli.exe'
+        
+        # Check if tool exists
+        if (-not (Test-Path -Path $toolPath -PathType Leaf)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "DefectDojo CLI not found at modules\defectdojo-cli.exe. Please add the EXE to the modules folder.", 
+                "Tool Not Found", 
+                [System.Windows.Forms.MessageBoxButtons]::OK, 
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            ) | Out-Null
+            $script:btnLaunchTool.Enabled = $true
+            return
+        }
+        
+        # Ensure CLI sees expected API token
+        $apiKey = $env:DOJO_API_KEY
+        if ([string]::IsNullOrWhiteSpace($apiKey)) {
+            Write-GuiMessage "DOJO_API_KEY environment variable is not set; cannot launch DefectDojo CLI." 'ERROR'
+            [System.Windows.Forms.MessageBox]::Show(
+                "DOJO_API_KEY is not configured. Please populate the variable and relaunch.",
+                "Missing Environment Variable",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            $script:btnLaunchTool.Enabled = $true
+            return
+        }
+
+        try {
+            [System.Environment]::SetEnvironmentVariable('DD_CLI_API_TOKEN', $apiKey, [System.EnvironmentVariableTarget]::User)
+            $env:DD_CLI_API_TOKEN = $apiKey
+            Write-GuiMessage "DD_CLI_API_TOKEN synchronized with DOJO_API_KEY."
+        } catch {
+            Write-GuiMessage "Failed to set DD_CLI_API_TOKEN: $_" 'ERROR'
+            [System.Windows.Forms.MessageBox]::Show(
+                "Failed to update DD_CLI_API_TOKEN. See log for details.",
+                "Environment Variable Error",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            $script:btnLaunchTool.Enabled = $true
+            return
+        }
+
+        # Log before launch
+        Write-GuiMessage "Launching DefectDojo CLI: modules\defectdojo-cli.exe"
+
+        # Launch the tool in a PowerShell window and keep it open 
+        # hacky.... but it works
+        $workingDirectory = Split-Path $toolPath -Parent
+        $escapedWorkingDir = $workingDirectory.Replace("'", "''")
+        $escapedToolPath = $toolPath.Replace("'", "''")
+        $command = "& { Set-Location -LiteralPath '$escapedWorkingDir'; & '$escapedToolPath' interactive }"
+        Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoExit', '-NoLogo', '-Command', $command) -WorkingDirectory $workingDirectory
+        
+        # Log after launch
+        Write-GuiMessage "DefectDojo CLI launched in a new window (console stays open)."
+        
+    } catch {
+        Write-GuiMessage "Failed to launch DefectDojo CLI: $_" 'ERROR'
+    } finally {
+        # Re-enable button
+        $script:btnLaunchTool.Enabled = $true
     }
 }
 

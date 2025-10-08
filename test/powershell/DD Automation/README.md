@@ -35,10 +35,11 @@
  ### Environment Variables
  | Variable            | Description                    |
  |---------------------|--------------------------------|
- | DOJO_API_KEY        | API key for Defect Dojo        |
+ | DOJO_API_KEY        | API key for Defect Dojo (automatically synced to DD_CLI_API_TOKEN when launching CLI) |
  | TENWAS_API_KEY      | API access key for Tenable WAS |
  | TENWAS_API_SECRET   | API secret key for Tenable WAS |
  | GITHUB_PAT          | API Key for GitHub             |
+ | DD_CLI_API_TOKEN    | DefectDojo CLI token (auto-created from DOJO_API_KEY, do not set manually) |
 
  ## Config File
  Manual Inputs: 
@@ -288,6 +289,34 @@ The GitHub integration automatically downloads and processes security findings f
 - Only retrieves open secret scanning alerts (not resolved/closed)
 - Requires GitHub Advanced Security features to be enabled on target repositories
 
+### Manual Upload (DefectDojo CLI)
+
+This feature allows you to launch the DefectDojo CLI tool in interactive mode for manual uploads that don't conform to the standard automation template.
+
+**Purpose**: Enables manual uploads for specialized scenarios or custom file formats not handled by the automated workflows.
+
+**Prerequisites**:
+- `DOJO_API_KEY` environment variable must be set
+- The CLI executable must exist at `modules\defectdojo-cli.exe`
+
+**How to use**:
+1. Click the "Launch DefectDojo CLI" button in the GUI
+2. Use the window that opens the interactive DefectDojo CLI interface for your upload needs
+3. The console window remains open after you complete your operations
+
+**Behavior**:
+- **API Token Synchronization**: Your `DOJO_API_KEY` is automatically synchronized to `DD_CLI_API_TOKEN` as a persistent user-level environment variable. This ensures the DefectDojo CLI can authenticate without additional configuration.
+- **Interactive Mode**: The CLI launches in interactive mode, providing a menu-driven interface for manual operations
+- **PowerShell 7**: The CLI is launched in a new PowerShell 7 (`pwsh.exe`) window with `-NoExit` flag to keep the console open
+- **Working Directory**: The CLI runs from the `modules\` directory
+- Independent of the main automation workflow
+
+**Troubleshooting**:
+- If clicking the button shows an error dialog, ensure:
+  - `DOJO_API_KEY` is set in your environment variables
+  - The EXE is present at `modules\defectdojo-cli.exe`
+- Check the status log in the GUI and `logs/DDAutomationLauncher_Renewed.log` for detailed error messages
+
 ## Modules
 
  | Module        | Status  | Description                                        |
@@ -305,12 +334,10 @@ The GitHub integration automatically downloads and processes security findings f
 
  ## Roadmap / Next Steps
  1. Update individual tool functionality as new tools are added / tweaked. 
- 2. Update this README.md after each development step.
 
  ###
  - Current tasks:
  - Future:
-   - Implement GitHub Dependabot integration
+   - Implement GitHub Dependabot integration (if not handled by Dependency Track)
    - Revisit BurpSuite folder picker necessity based on Burp module
    - Reupload burp scan given directory (or use external tooling)
-   - Revisit local file uploads via command line tool use
