@@ -580,7 +580,7 @@ function Process-GitHubCodeQL {
                 Write-GuiMessage "No DefectDojo engagement selected; skipping GitHub uploads." 'WARNING'
                 return
             }
-            $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
+            $existingTests = @(Get-DefectDojoTests -EngagementId $engagement.Id)
             
             foreach ($file in $sarifFiles) {
                 try {
@@ -607,7 +607,7 @@ function Process-GitHubCodeQL {
                         try {
                             $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20 #hard coded in DD why
                             Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
-                            $existingTests += $newTest
+                            $existingTests = @($existingTests) + $newTest
                         } catch {
                             Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
                             continue
