@@ -89,7 +89,7 @@ function Initialize-GuiElements {
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(620, 750)
+    $form.Size = New-Object System.Drawing.Size(620, 790)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
@@ -171,8 +171,8 @@ function Initialize-GuiElements {
     # Manual Upload (DefectDojo CLI) GroupBox
     $grpManualTool = New-Object System.Windows.Forms.GroupBox
     $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
-    $grpManualTool.Size = New-Object System.Drawing.Size(580, 70)
-    $grpManualTool.Location = New-Object System.Drawing.Point(10, 420)
+    $grpManualTool.Size = New-Object System.Drawing.Size(580, 80)
+    $grpManualTool.Location = New-Object System.Drawing.Point(10, 455)
     $form.Controls.Add($grpManualTool)
 
     # Launch DefectDojo CLI Button
@@ -193,17 +193,17 @@ function Initialize-GuiElements {
     $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
 
     # Status ListBox (moved down to accommodate new group)
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 150); Location = New-Object System.Drawing.Point(10, 500) }
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 130); Location = New-Object System.Drawing.Point(10, 545) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
-    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(420, 670); Size = New-Object System.Drawing.Size(80, 30) }
-    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(520, 670); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(420, 685); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(520, 685); Size = New-Object System.Drawing.Size(80, 30) }
     
     # Add completion message label
     $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
         Text = ""; 
-        Location = New-Object System.Drawing.Point(10, 675); 
+        Location = New-Object System.Drawing.Point(10, 720); 
         Size = New-Object System.Drawing.Size(400, 25);
         Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
         ForeColor = [System.Drawing.Color]::Green;
