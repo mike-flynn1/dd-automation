@@ -12,7 +12,7 @@ Describe 'Get-Config' {
         It 'Loads configuration as a hashtable' {
             $config = Get-Config -ConfigPath $exampleConfigPath -TemplatePath $invalidPath
             $config | Should -BeOfType Hashtable
-            $config.ContainsKey('Debug') | Should -BeTrue
+            $config.ContainsKey('Tools') | Should -BeTrue
         }
     }
     Context 'When config file missing, example exists' {
