@@ -5,10 +5,9 @@
     Provides functions to upload scan report files to a specified DefectDojo test record,
     and a wrapper to re-import a file to the test IDs selected in the GUI configuration.
 #>
-$moduleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $moduleRoot 'Logging.ps1')
-. (Join-Path $moduleRoot 'Config.ps1')
-. (Join-Path $moduleRoot 'DefectDojo.ps1')
+. (Join-Path $PSScriptRoot 'Logging.ps1')
+. (Join-Path $PSScriptRoot 'Config.ps1')
+. (Join-Path $PSScriptRoot 'DefectDojo.ps1')
 
 function Upload-DefectDojoScan {
     [CmdletBinding()]
@@ -70,7 +69,7 @@ function ProUpload-DefectDojoScan {
         Throw 'Missing DefectDojo API key (DOJO_API_KEY).'
     }
     # Build and invoke universal-importer for reimport
-    $exePath = Join-Path $moduleRoot 'universal-importer.exe'
+    $exePath = Join-Path $PSScriptRoot 'universal-importer.exe'
     $args    = @(
         'reimport',
         '-u', $baseUrl,

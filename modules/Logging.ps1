@@ -12,7 +12,7 @@
 function Initialize-Log {
     [CmdletBinding()]
     param(
-        [string]$LogDirectory = (Join-Path (Split-Path -Path $MyInvocation.MyCommand.Path -Parent) '..\logs'),
+        [string]$LogDirectory = (Join-Path $PSScriptRoot '..\logs'),
         [string]$LogFileName = 'log.txt',
         [switch]$Overwrite
     )

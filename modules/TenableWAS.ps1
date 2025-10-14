@@ -8,9 +8,8 @@
     a GET request to retrieve the report.
 #>
 
-$moduleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $moduleRoot 'Logging.ps1')
-. (Join-Path $moduleRoot 'Config.ps1')
+. (Join-Path $PSScriptRoot 'Logging.ps1')
+. (Join-Path $PSScriptRoot 'Config.ps1')
 
 function Export-TenableWASScan {
     [CmdletBinding()]

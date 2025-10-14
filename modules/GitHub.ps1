@@ -5,13 +5,12 @@
     Provides functions to retrieve GitHub repositories and download SARIF code scanning analyses.
 #>
 
-$moduleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $moduleRoot 'Logging.ps1')
-. (Join-Path $moduleRoot 'Config.ps1')
-. (Join-Path $moduleRoot 'Uploader.ps1')
+. (Join-Path $PSScriptRoot 'Logging.ps1')
+. (Join-Path $PSScriptRoot 'Config.ps1')
+. (Join-Path $PSScriptRoot 'Uploader.ps1')
 
 #DEBUG
-#Initialize-Log -LogDirectory (Join-Path $moduleRoot 'logs') -LogFileName 'GitHub.log' -Overwrite
+#Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'GitHub.log' -Overwrite
 
 function Get-GitHubRepos {
     <#

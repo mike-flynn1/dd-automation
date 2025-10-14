@@ -6,9 +6,8 @@
     Posts to the DefectDojo reimport-scan endpoint with the given configuration.
 #>
 
-$moduleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $moduleRoot 'Logging.ps1')
-. (Join-Path $moduleRoot 'Config.ps1')
+. (Join-Path $PSScriptRoot 'Logging.ps1')
+. (Join-Path $PSScriptRoot 'Config.ps1')
 
 function Invoke-SonarQubeProcessing {
     [CmdletBinding()]

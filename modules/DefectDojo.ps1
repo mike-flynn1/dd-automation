@@ -9,9 +9,8 @@
      API endpoints and schemas are documented in the Examples/Defect Dojo API v2.json file.
 #>
 
-$moduleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $moduleRoot 'Logging.ps1')
-. (Join-Path $moduleRoot 'Config.ps1')
+. (Join-Path $PSScriptRoot 'Logging.ps1')
+. (Join-Path $PSScriptRoot 'Config.ps1')
 
 function Get-DefectDojoProducts {
     <#

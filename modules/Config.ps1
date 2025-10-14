@@ -3,14 +3,11 @@
     Module for loading and validating the automation tool configuration.
 #>
 
-$scriptPath = $MyInvocation.MyCommand.Path
-$scriptDir = Split-Path -Path $scriptPath -Parent
-
 function Get-Config {
     [CmdletBinding()]
     param(
-        [string]$ConfigPath   = (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1'),
-        [string]$TemplatePath = (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1.example')
+        [string]$ConfigPath   = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1'),
+        [string]$TemplatePath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1.example')
     )
 
     if (-not [string]::IsNullOrWhiteSpace($ConfigPath) -and (Test-Path -Path $ConfigPath)) {
@@ -118,7 +115,7 @@ function Save-Config {
         [Parameter(Mandatory=$true)]
         [hashtable]$Config,
 
-        [string]$ConfigPath = (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')
+        [string]$ConfigPath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')
     )
 
     # Build the PS data file content
@@ -252,4 +249,4 @@ function Save-Config {
     }
 }
 
-#Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $scriptDir -Parent) 'config\config.psd1')
+#Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')
