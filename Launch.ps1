@@ -711,11 +711,11 @@ function Process-GitHubCodeQL {
                             continue
                         }
                         #Upload with new test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF'
                     } else {
                         Write-GuiMessage "Using existing test: $($existingTest.Title) (ID: $($existingTest.Id))"
                         #Upload with existing test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $true
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF'
                     }
 
 
@@ -781,11 +781,11 @@ function Process-GitHubSecretScanning {
                             continue
                         }
                         #Upload with new test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $true
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning'
                     } else {
                         Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
                         #Upload with existing test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $true
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning'
                     }
                 } catch {
                     $uploadErrors++
