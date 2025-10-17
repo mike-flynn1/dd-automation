@@ -687,14 +687,12 @@ function Process-GitHubCodeQL {
 
                     # Remove numeric suffixes
                     $baseServiceName = $fileName -replace '-\d+$', ''
-                    $orgMatch = $null
                     $repoNameOnly = $baseServiceName
                     if ($baseServiceName -match '^(?<org>[^-]+)-(?<repo>.+)$') {
-                        $orgMatch = $Matches['org']
                         $repoNameOnly = $Matches['repo']
                     }
 
-                    $serviceNameCore = if ($orgs.Count -gt 1 -and $orgMatch) { "$orgMatch-$repoNameOnly" } else { $repoNameOnly }
+                    $serviceNameCore = $repoNameOnly
                     $serviceName = "$serviceNameCore (CodeQL)"
 
                     # Check if test exists, create if not
@@ -759,17 +757,28 @@ function Process-GitHubSecretScanning {
 
             foreach ($file in $jsonFiles) {
                 try {
-                    # Extract service name from JSON file (remove -secrets.json suffix)
+                    # Extract service name from JSON file (remove suffixes and org prefix)
                     $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
                     $repoName = $fileName -replace '-secrets$', ''
+                    $baseServiceName = $repoName -replace '-\d+$', ''
+                    $repoNameOnly = $baseServiceName
+                    if ($baseServiceName -match '^(?<org>[^-]+)-(?<repo>.+)$') {
+                        $repoNameOnly = $Matches['repo']
+                    }
 
                     # Append tool type to test name
-                    $serviceName = "$repoName (Secret Scanning)"
+                    $serviceName = "$repoNameOnly (Secret Scanning)"
 
                     # Check if test exists, create if not
                     $engagement = $script:cmbDDEng.SelectedItem
                     $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
-                    $existingTest = $existingTests | Where-Object { $_.title -eq $serviceName }
+                    $existingTest = $existingTests | Where-Object {
+                        $_.title -in @(
+                            $serviceName,
+                            "$baseServiceName (Secret Scanning)",
+                            "$repoName (Secret Scanning)"
+                        )
+                    } | Select-Object -First 1
 
                     if (-not $existingTest) {
                         Write-GuiMessage "Creating new test: $serviceName"
