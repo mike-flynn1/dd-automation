@@ -25,6 +25,102 @@ $TOOL_ENV_VARS = @{
 #TODO: Possibly needed for pester tests. Validate when Pester working
 #Initialize-Log -LogDirectory (Join-Path $scriptDir '..\logs') -LogFileName 'EnvValidator.log' -Overwrite
 
+function Ensure-TypeAvailable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TypeName,
+        [Parameter(Mandatory = $false)]
+        [string]$AssemblyName
+    )
+
+    if ($TypeName -as [type]) {
+        return $true
+    }
+
+    if (-not $AssemblyName) {
+        return $false
+    }
+
+    try {
+        Add-Type -AssemblyName $AssemblyName -ErrorAction Stop | Out-Null
+        return ($TypeName -as [type]) -ne $null
+    } catch {
+        Write-Log -Message "Failed to load assembly '$AssemblyName' for type '$TypeName': $_" -Level 'DEBUG'
+        return $false
+    }
+}
+
+function Show-MissingVarsPrompt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$MissingVars
+    )
+
+    $message = "Missing API keys: $($MissingVars -join ', ')`n`nWould you like to enter them now? They will be saved to your user environment."
+    $title = 'Missing Environment Variables'
+
+    if (Ensure-TypeAvailable -TypeName 'System.Windows.Forms.MessageBox' -AssemblyName 'System.Windows.Forms') {
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            $message,
+            $title,
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question
+        )
+
+        return $result.ToString()
+    }
+
+    Write-Log -Message 'System.Windows.Forms assembly not available. Falling back to console prompt.' -Level 'DEBUG'
+
+    while ($true) {
+        $response = Read-Host -Prompt "$message (Y/N)"
+        if ([string]::IsNullOrWhiteSpace($response)) {
+            continue
+        }
+
+        switch ($response.Trim().ToUpperInvariant()) {
+            'Y' { return 'Yes' }
+            'N' { return 'No' }
+            default { Write-Host "Please enter 'Y' or 'N'." -ForegroundColor Yellow }
+        }
+    }
+}
+
+function Get-ApiKeyValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VariableName
+    )
+
+    if (Ensure-TypeAvailable -TypeName 'Microsoft.VisualBasic.Interaction' -AssemblyName 'Microsoft.VisualBasic') {
+        return [Microsoft.VisualBasic.Interaction]::InputBox(
+            "Enter API key for $VariableName",
+            'API Key Input',
+            ''
+        )
+    }
+
+    Write-Log -Message 'Microsoft.VisualBasic assembly not available. Falling back to console input.' -Level 'DEBUG'
+    return Read-Host -Prompt "Enter API key for $VariableName"
+}
+
+function Set-EnvironmentValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        [string]$Value,
+        [Parameter(Mandatory = $true)]
+        [System.EnvironmentVariableTarget]$Target
+    )
+
+    [Environment]::SetEnvironmentVariable($Name, $Value, $Target)
+}
+
 function Get-EnvVariables {
     [CmdletBinding()]
     param()
@@ -65,13 +161,8 @@ function Validate-Environment {
     }
 
     if ($missing.Count -gt 0) {
-        Add-Type -AssemblyName System.Windows.Forms
-        $response = [System.Windows.Forms.MessageBox]::Show(
-            "Missing API keys: $($missing -join ', ')`n`nWould you like to enter them now? They will be saved to your user environment.", 
-            "Missing Environment Variables", 
-            [System.Windows.Forms.MessageBoxButtons]::YesNo, 
-            [System.Windows.Forms.MessageBoxIcon]::Question)
-        
+        $response = Show-MissingVarsPrompt -MissingVars $missing
+
         if ($response -eq 'Yes') {
             Request-MissingApiKeys -MissingVars $missing
         } else {
@@ -92,16 +183,9 @@ function Request-MissingApiKeys {
         [string[]]$MissingVars
     )
 
-    Add-Type -AssemblyName Microsoft.VisualBasic
-    
     foreach ($var in $MissingVars) {
         try {
-            # Use Visual Basic InputBox for secure-looking input
-            $value = [Microsoft.VisualBasic.Interaction]::InputBox(
-                "Enter API key for $var",
-                "API Key Input",
-                ""
-            )
+            $value = Get-ApiKeyValue -VariableName $var
             
             if ([string]::IsNullOrWhiteSpace($value)) {
                 Write-Log -Message "No value provided for $var, skipping..." -Level 'WARNING'
@@ -109,9 +193,9 @@ function Request-MissingApiKeys {
             }
             
             # Set environment variable at User scope for persistence
-            [Environment]::SetEnvironmentVariable($var, $value, [EnvironmentVariableTarget]::User)
+            Set-EnvironmentValue -Name $var -Value $value -Target ([EnvironmentVariableTarget]::User)
             # Also set for current process so it's immediately available
-            [Environment]::SetEnvironmentVariable($var, $value, [EnvironmentVariableTarget]::Process)
+            Set-EnvironmentValue -Name $var -Value $value -Target ([EnvironmentVariableTarget]::Process)
             
             Write-Log -Message "Successfully set environment variable: $var" -Level 'INFO'
             Write-Host "✓ Set $var" -ForegroundColor Green

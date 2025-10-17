@@ -1,33 +1,45 @@
 # Pester tests for EnvValidator module
-$moduleDir = Join-Path $PSScriptRoot '../modules'
-. (Join-Path $moduleDir 'Config.ps1')
-. (Join-Path $moduleDir 'Logging.ps1')
-. (Join-Path $moduleDir 'EnvValidator.ps1')
+BeforeAll {
+    $moduleDir = Join-Path $PSScriptRoot '../modules'
+    . (Join-Path $moduleDir 'Config.ps1')
+    . (Join-Path $moduleDir 'Logging.ps1')
+    . (Join-Path $moduleDir 'DefectDojo.ps1')
+    . (Join-Path $moduleDir 'EnvValidator.ps1')
 
-# Mock config with different tool combinations
-$mockConfig = @{
-    Debug = $false
-    Tools = @{
-        DefectDojo = $true
-        TenableWAS = $true
-        SonarQube = $false
-        BurpSuite = $true
+    Initialize-Log -LogFileName 'env-validator-tests.log' -Overwrite
+}
+# Helper to build mock config with overridable tool toggles
+function global:New-MockConfig {
+    param(
+        [hashtable]$ToolsOverride
+    )
+
+    $config = @{
+        Debug = $false
+        Tools = @{
+            DefectDojo = $true
+            TenableWAS = $true
+            SonarQube = $false
+            BurpSuite = $true
+            GitHub = $true
+        }
+        Paths = @{ BurpSuiteXmlFolder = 'C:\Scans\Burp' }
+        ApiBaseUrls = @{}
     }
-    Paths = @{ BurpSuiteXmlFolder = 'C:\Scans\Burp' }
-    ApiBaseUrls = @{}
+
+    if ($null -ne $ToolsOverride) {
+        foreach ($key in $ToolsOverride.Keys) {
+            $config.Tools[$key] = $ToolsOverride[$key]
+        }
+    }
+
+    return $config
 }
 
 Describe 'EnvValidator Module Tests' {
     BeforeAll {
-        Mock Get-Config { return $mockConfig }
-        
-        # Mock Windows Forms MessageBox and VB InputBox to avoid GUI interactions during tests
-        Mock -CommandName Add-Type -MockWith {} -ParameterFilter { $AssemblyName -eq 'System.Windows.Forms' }
-        Mock -CommandName Add-Type -MockWith {} -ParameterFilter { $AssemblyName -eq 'Microsoft.VisualBasic' }
-        
-        # Create mock objects for GUI components
-        $script:mockMessageBoxResult = 'No'
-        $script:mockInputBoxResult = ''
+        $script:getConfigCalls = 0
+        Mock Get-Config { $script:getConfigCalls++; return New-MockConfig }
     }
 
     Describe 'Get-EnvVariables' {
@@ -37,22 +49,37 @@ Describe 'EnvValidator Module Tests' {
             $vars | Should -Contain 'TENWAS_ACCESS_KEY'
             $vars | Should -Contain 'TENWAS_SECRET_KEY'
             $vars | Should -Contain 'BURP_API_KEY'
+            $vars | Should -Contain 'GITHUB_PAT'
             $vars | Should -Not -Contain 'SONARQUBE_API_TOKEN'
         }
 
         It 'Returns empty array when no tools are enabled' {
-            Mock Get-Config { 
-                return @{ 
-                    Tools = @{
-                        DefectDojo = $false
-                        TenableWAS = $false
-                        SonarQube = $false
-                        BurpSuite = $false
-                    }
+            Mock Get-Config {
+                $script:getConfigCalls++
+                return New-MockConfig -ToolsOverride @{
+                    DefectDojo = $false
+                    TenableWAS = $false
+                    SonarQube = $false
+                    BurpSuite = $false
+                    GitHub = $false
                 }
             }
             $vars = Get-EnvVariables
             $vars | Should -BeNullOrEmpty
+
+            Mock Get-Config { $script:getConfigCalls++; return New-MockConfig }
+        }
+
+        It 'Omits GitHub variable when tool disabled' {
+            Mock Get-Config {
+                $script:getConfigCalls++
+                return New-MockConfig -ToolsOverride @{ GitHub = $false }
+            }
+
+            $vars = Get-EnvVariables
+            $vars | Should -Not -Contain 'GITHUB_PAT'
+
+            Mock Get-Config { $script:getConfigCalls++; return New-MockConfig }
         }
     }
 
@@ -63,6 +90,7 @@ Describe 'EnvValidator Module Tests' {
                 $env:TENWAS_ACCESS_KEY = 'test-access-key'
                 $env:TENWAS_SECRET_KEY = 'test-secret-key'
                 $env:BURP_API_KEY = 'test-burp-key'
+                $env:GITHUB_PAT = 'test-github-pat'
             }
 
             It 'Should not throw any errors' {
@@ -74,12 +102,26 @@ Describe 'EnvValidator Module Tests' {
                 Validate-Environment
                 Assert-VerifiableMock
             }
+
+            It 'Should log status for each variable when Test switch is used' {
+                Mock Write-Log -MockWith {}
+
+                Validate-Environment -Test
+
+                Assert-MockCalled Write-Log -ParameterFilter { $Message -eq "Environment variable 'DOJO_API_KEY' is set." -and $Level -eq 'INFO' } -Times 1
+                Assert-MockCalled Write-Log -ParameterFilter { $Message -eq "Environment variable 'TENWAS_ACCESS_KEY' is set." -and $Level -eq 'INFO' } -Times 1
+                Assert-MockCalled Write-Log -ParameterFilter { $Message -eq "Environment variable 'TENWAS_SECRET_KEY' is set." -and $Level -eq 'INFO' } -Times 1
+                Assert-MockCalled Write-Log -ParameterFilter { $Message -eq "Environment variable 'BURP_API_KEY' is set." -and $Level -eq 'INFO' } -Times 1
+                Assert-MockCalled Write-Log -ParameterFilter { $Message -eq "Environment variable 'GITHUB_PAT' is set." -and $Level -eq 'INFO' } -Times 1
+                Assert-MockCalled Write-Log -ParameterFilter { $Message -eq 'All required environment variables are set.' -and $Level -eq 'INFO' } -Times 1
+            }
             
             AfterAll {
                 Remove-Item Env:DOJO_API_KEY -ErrorAction SilentlyContinue
                 Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
                 Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
                 Remove-Item Env:BURP_API_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:GITHUB_PAT -ErrorAction SilentlyContinue
             }
         }
 
@@ -89,25 +131,16 @@ Describe 'EnvValidator Module Tests' {
                 Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
                 Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
                 Remove-Item Env:BURP_API_KEY -ErrorAction SilentlyContinue
-                
-                # Mock MessageBox to return 'No'
-                Mock -CommandName Invoke-Expression -MockWith { 'No' } -ParameterFilter { $Command -like '*MessageBox*' }
-                $global:mockMessageBoxCalled = $false
-                Add-Type -TypeDefinition @"
-                    using System.Windows.Forms;
-                    public static class MockMessageBox {
-                        public static DialogResult Show(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon) {
-                            return DialogResult.No;
-                        }
-                    }
-"@ -ReferencedAssemblies System.Windows.Forms -ErrorAction SilentlyContinue
             }
 
             It 'Should throw error when user declines to enter missing variables' {
-                # Mock the MessageBox Show method to return 'No'
-                Mock -ModuleName EnvValidator -CommandName '[System.Windows.Forms.MessageBox]::Show' -MockWith { 'No' }
+                Mock Show-MissingVarsPrompt -Verifiable -MockWith { 'No' }
+                Mock Write-Log -MockWith {}
                 
                 { Validate-Environment } | Should -Throw -ExpectedMessage '*Required environment variables missing*'
+
+                Assert-MockCalled Write-Log -ParameterFilter { $Message -like 'Required environment variables missing*' -and $Level -eq 'ERROR' } -Times 1
+                Assert-VerifiableMock
             }
         }
 
@@ -120,76 +153,151 @@ Describe 'EnvValidator Module Tests' {
             }
 
             It 'Should call Request-MissingApiKeys when user accepts' {
-                Mock -ModuleName EnvValidator -CommandName '[System.Windows.Forms.MessageBox]::Show' -MockWith { 'Yes' }
+                Mock Show-MissingVarsPrompt -MockWith { 'Yes' }
                 Mock Request-MissingApiKeys -Verifiable
                 
                 { Validate-Environment } | Should -Not -Throw
                 Assert-VerifiableMock
             }
         }
+
+        Context 'When required variables are provided explicitly' {
+            BeforeEach {
+                $env:CUSTOM_VAR = 'custom-value'
+            }
+
+            AfterEach {
+                Remove-Item Env:CUSTOM_VAR -ErrorAction SilentlyContinue
+            }
+
+            It 'Honors explicitly provided variable list' {
+                Mock Get-Config {
+                    $script:getConfigCalls++
+                    throw 'Get-Config should not be called when RequiredVariables are supplied.'
+                }
+                Mock Write-Log -MockWith {}
+
+                { Validate-Environment -RequiredVariables @('CUSTOM_VAR') } | Should -Not -Throw
+
+                Mock Get-Config { $script:getConfigCalls++; return New-MockConfig }
+                Mock Write-Log -MockWith {}
+            }
+        }
     }
 
     Describe 'Request-MissingApiKeys' {
-        BeforeAll {
-            # Mock the InputBox to avoid GUI interaction
-            Mock -CommandName '[Microsoft.VisualBasic.Interaction]::InputBox' -MockWith { 'mock-api-key-value' }
-            Mock -CommandName '[Environment]::SetEnvironmentVariable' -MockWith {}
-            Mock Write-Host -MockWith {}
-        }
 
         It 'Should prompt for each missing variable' {
+            Mock Get-ApiKeyValue -MockWith { 'mock-api-key-value' }
+            Mock Write-Log -MockWith {}
+            Mock Write-Host -MockWith {}
+
             $missingVars = @('DOJO_API_KEY', 'TENWAS_ACCESS_KEY')
+            $originalSetter = (Get-Command Set-EnvironmentValue).ScriptBlock
+            $callTargets = [System.Collections.Generic.List[System.EnvironmentVariableTarget]]::new()
+            Set-Item -Path function:Set-EnvironmentValue -Value {
+                param($Name, $Value, $Target)
+                $callTargets.Add($Target) | Out-Null
+            }
+
+            try {
+                Request-MissingApiKeys -MissingVars $missingVars
+            }
+            finally {
+                Set-Item -Path function:Set-EnvironmentValue -Value $originalSetter
+            }
             
-            Request-MissingApiKeys -MissingVars $missingVars
-            
-            Assert-MockCalled '[Microsoft.VisualBasic.Interaction]::InputBox' -Times 2
+            Assert-MockCalled Get-ApiKeyValue -Times 2
         }
 
         It 'Should set environment variables in both User and Process scope' {
+            Mock Get-ApiKeyValue -MockWith { 'mock-api-key-value' }
+            Mock Write-Log -MockWith {}
+            Mock Write-Host -MockWith {}
+
             $missingVars = @('DOJO_API_KEY')
-            
-            Request-MissingApiKeys -MissingVars $missingVars
-            
-            Assert-MockCalled '[Environment]::SetEnvironmentVariable' -ParameterFilter { $args[2] -eq 'User' } -Times 1
-            Assert-MockCalled '[Environment]::SetEnvironmentVariable' -ParameterFilter { $args[2] -eq 'Process' } -Times 1
+            $originalSetter = (Get-Command Set-EnvironmentValue).ScriptBlock
+            $callTargets = [System.Collections.Generic.List[System.EnvironmentVariableTarget]]::new()
+            Set-Item -Path function:Set-EnvironmentValue -Value {
+                param($Name, $Value, $Target)
+                $callTargets.Add($Target) | Out-Null
+            }
+
+            try {
+                Request-MissingApiKeys -MissingVars $missingVars
+            }
+            finally {
+                Set-Item -Path function:Set-EnvironmentValue -Value $originalSetter
+            }
+
+            $callTargets | Should -Contain ([EnvironmentVariableTarget]::User)
+            $callTargets | Should -Contain ([EnvironmentVariableTarget]::Process)
         }
 
         It 'Should skip empty or null values' {
-            Mock -CommandName '[Microsoft.VisualBasic.Interaction]::InputBox' -MockWith { '' }
+            Mock Get-ApiKeyValue -MockWith { '' }
             Mock Write-Log -Verifiable -ParameterFilter { $Message -like '*skipping*' -and $Level -eq 'WARNING' }
+            Mock Write-Host -MockWith {}
+
+            $originalSetter = (Get-Command Set-EnvironmentValue).ScriptBlock
+            $callTargets = [System.Collections.Generic.List[System.EnvironmentVariableTarget]]::new()
+            Set-Item -Path function:Set-EnvironmentValue -Value {
+                param($Name, $Value, $Target)
+                $callTargets.Add($Target) | Out-Null
+            }
             
-            Request-MissingApiKeys -MissingVars @('EMPTY_KEY')
+            try {
+                Request-MissingApiKeys -MissingVars @('EMPTY_KEY')
+            }
+            finally {
+                Set-Item -Path function:Set-EnvironmentValue -Value $originalSetter
+            }
             
             Assert-VerifiableMock
-            Assert-MockCalled '[Environment]::SetEnvironmentVariable' -Times 0
+            $callTargets.Count | Should -Be 0
         }
 
         It 'Should handle errors gracefully' {
-            Mock -CommandName '[Microsoft.VisualBasic.Interaction]::InputBox' -MockWith { 'test-value' }
-            Mock -CommandName '[Environment]::SetEnvironmentVariable' -MockWith { throw 'Access denied' }
+            Mock Get-ApiKeyValue -MockWith { 'test-value' }
             Mock Write-Log -Verifiable -ParameterFilter { $Level -eq 'ERROR' }
+            Mock Write-Host -MockWith {}
+
+            $originalSetter = (Get-Command Set-EnvironmentValue).ScriptBlock
+            Set-Item -Path function:Set-EnvironmentValue -Value {
+                param($Name, $Value, $Target)
+                throw 'Access denied'
+            }
             
-            { Request-MissingApiKeys -MissingVars @('ERROR_KEY') } | Should -Not -Throw
+            try {
+                { Request-MissingApiKeys -MissingVars @('ERROR_KEY') } | Should -Not -Throw
+            }
+            finally {
+                Set-Item -Path function:Set-EnvironmentValue -Value $originalSetter
+            }
             Assert-VerifiableMock
         }
     }
 
     Describe 'Integration Tests' {
         Context 'Complete workflow with missing variables' {
-            BeforeAll {
+            It 'Should successfully validate after user provides missing keys' {
                 Remove-Item Env:DOJO_API_KEY -ErrorAction SilentlyContinue
-                Mock -CommandName '[System.Windows.Forms.MessageBox]::Show' -MockWith { 'Yes' }
-                Mock -CommandName '[Microsoft.VisualBasic.Interaction]::InputBox' -MockWith { 'integration-test-key' }
-                Mock -CommandName '[Environment]::SetEnvironmentVariable' -MockWith {
-                    # Simulate setting the environment variable
-                    if ($args[2] -eq 'Process') {
-                        Set-Item "Env:$($args[0])" $args[1]
+                Mock Show-MissingVarsPrompt -MockWith { 'Yes' }
+                Mock Get-ApiKeyValue -MockWith { 'integration-test-key' }
+                $originalSetter = (Get-Command Set-EnvironmentValue).ScriptBlock
+                Set-Item -Path function:Set-EnvironmentValue -Value {
+                    param($Name, $Value, $Target)
+                    if ($Target -eq [EnvironmentVariableTarget]::Process) {
+                        Set-Item "Env:$Name" $Value
                     }
                 }
-            }
 
-            It 'Should successfully validate after user provides missing keys' {
-                { Validate-Environment -RequiredVariables @('DOJO_API_KEY') } | Should -Not -Throw
+                try {
+                    { Validate-Environment -RequiredVariables @('DOJO_API_KEY') } | Should -Not -Throw
+                }
+                finally {
+                    Set-Item -Path function:Set-EnvironmentValue -Value $originalSetter
+                }
             }
         }
     }

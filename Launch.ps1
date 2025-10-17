@@ -39,9 +39,9 @@ $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'modules\GitHub.ps1')
 . (Join-Path $scriptDir 'modules\TenableWAS.ps1')
 . (Join-Path $scriptDir 'modules\EnvValidator.ps1')
-. (Join-Path $scriptDir 'modules\DefectDojo.ps1')
-. (Join-Path $scriptDir 'modules\Sonarqube.ps1')
-. (Join-Path $scriptDir 'modules\Uploader.ps1')
+. (Join-Path $scriptDir 'DefectDojo.ps1')
+. (Join-Path $scriptDir 'Sonarqube.ps1')
+. (Join-Path $scriptDir 'Uploader.ps1')
 # Initialize logging
 Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomationLauncher_Renewed.log' -Overwrite
 Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
