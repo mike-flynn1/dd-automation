@@ -18,7 +18,7 @@
  - PowerShell 7.2 or later
  - Network access to APIs (Defect Dojo, Tenable WAS)
  - Environment variables set for API keys and credentials
- - Pester >5.0 if running tests (DOES NOT CURRENTLY WORK, blocked by AV)
+ - Pester >5.0 if running tests (no need if not developing)
  - Tool Knowledge 
 
 
@@ -113,7 +113,7 @@ All filtering decisions are logged to `logs/DDAutomationLauncher_Renewed.log` fo
  ├── logs/           # Timestamped log files
  ├── modules/        # Individual function .ps1 files
  ├── Examples/       # Example input files (ignored by Git)
- ├── Tests/          # Test files (CURRENTLY NONFUNCTIONAL)
+ ├── Tests/          # Test files
  ├── .gitignore
  └── README.md       # Project documentation
 ```
