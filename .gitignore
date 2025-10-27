@@ -33,3 +33,4 @@ config/*.psd1
 .github/ 
 CLAUDE.md
 .claude/
+AGENTS.md

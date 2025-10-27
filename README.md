@@ -291,7 +291,7 @@ The GitHub integration automatically downloads and processes security findings f
 
 ## BurpSuite Integration
 
-The BurpSuite integration processes locally stored XML report files from Burp Scanner (Professional or Enterprise) and uploads them to DefectDojo. This module scans a user-specified folder for BurpSuite XML reports.
+The BurpSuite integration processes a locally stored XML report file from Burp Scanner (Professional or Enterprise) and uploads it to DefectDojo if selected. This module scans a user-specified folder for BurpSuite XML reports.
 
 ### Features
 - **Local File Processing**: Scans a designated folder for BurpSuite XML report files
@@ -324,9 +324,7 @@ Paths = @{
 ### Limitations
 - XML reports must be manually exported from BurpSuite (no automated export via BurpSuite API)
 - Only processes XML format (JSON or HTML reports are not supported)
-- All files in a folder must be valid BurpSuite XML reports
 - No automatic scan discovery or selection (user must manage file organization)
-- File naming is not enforced (any `.xml` files in the folder will be uploaded)
 
 
 ### Manual Upload (DefectDojo CLI)
