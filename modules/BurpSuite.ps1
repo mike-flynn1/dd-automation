@@ -55,7 +55,8 @@ function Get-BurpSuiteReports {
         Write-Log -Message "BurpSuite XML report: $file" -Level 'INFO'
     }
 
-    return $filePaths
+    # Ensure the caller always receives an array, even when only one file is discovered.
+    return ,$filePaths
 }
 
 #DEBUG

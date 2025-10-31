@@ -36,6 +36,19 @@ Describe 'Get-BurpSuiteReports' {
             $result[0] | Should -Be $xmlFile
         }
 
+        It 'Preserves array typing for single file results' {
+            $testFolder = Join-Path $TestDrive 'burp-single-array'
+            New-Item -ItemType Directory -Path $testFolder -Force | Out-Null
+
+            $xmlFile = Join-Path $testFolder 'single.xml'
+            Set-Content -Path $xmlFile -Value '<xml>single</xml>'
+
+            $result = Get-BurpSuiteReports -FolderPath $testFolder
+
+            $result.GetType().FullName | Should -Be 'System.Object[]'
+            $result[0] | Should -Be $xmlFile
+        }
+
         It 'Returns empty array when no XML files found' {
             # Create test directory with no XML files
             $testFolder = Join-Path $TestDrive 'empty-folder'
