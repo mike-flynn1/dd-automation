@@ -7,7 +7,7 @@
  - GitHub CodeQL SARIF reports → Defect Dojo (Implemented)
  - GitHub Secret Scanning JSON → Defect Dojo (Implemented)
  - GitHub Dependabot → Defect Dojo (not Implemented)
- - Burp Suite XML report parsing → Defect Dojo (not Implemented)
+ - BurpSuite XML report parsing → Defect Dojo (Implemented)
 
  The solution is modular, extensible, and designed for easy addition of new tools.
 
@@ -289,6 +289,44 @@ The GitHub integration automatically downloads and processes security findings f
 - Only retrieves open secret scanning alerts (not resolved/closed)
 - Requires GitHub Advanced Security features to be enabled on target repositories
 
+## BurpSuite Integration
+
+The BurpSuite integration processes a locally stored XML report file from Burp Scanner (Professional or Enterprise) and uploads it to DefectDojo if selected. This module scans a user-specified folder for BurpSuite XML reports.
+
+### Features
+- **Local File Processing**: Scans a designated folder for BurpSuite XML report files
+- **Direct DefectDojo Upload**: Uploads report to a selected DefectDojo test using the "Burp Scan" parser
+
+### How It Works
+1. When the BurpSuite checkbox is selected in the GUI, the user specifies a folder containing a BurpSuite XML report
+3. The XML file is uploaded to DefectDojo using the selected test:
+   - Uses DefectDojo's "Burp Scan" scan type for proper parsing
+   - Upload is performed via DefectDojo's `/reimport-scan/` endpoint
+4. Progress and results are logged in the GUI status window and log file
+5. Errors are tracked and reported
+
+### Configuration
+**Environment Variables** (Required):
+- `DOJO_API_KEY`: DefectDojo API token (required for upload)
+
+**Config File** (`config/config.psd1`):
+```powershell
+Paths = @{
+    BurpSuiteXmlFolder = 'C:\SecurityScans\BurpSuite\'
+}
+```
+
+**GUI Inputs**:
+- **BurpSuite Checkbox**: Enable BurpSuite processing
+- **Folder Path**: Specify or browse to folder containing an XML report
+- **DD Test (BurpSuite)**: Dropdown to select the specific DefectDojo test for upload (populated from selected engagement)
+
+### Limitations
+- XML reports must be manually exported from BurpSuite (no automated export via BurpSuite API)
+- Only processes XML format (JSON or HTML reports are not supported)
+- No automatic scan discovery or selection (user must manage file organization)
+
+
 ### Manual Upload (DefectDojo CLI)
 
 This feature allows you to launch the DefectDojo CLI tool in interactive mode for manual uploads that don't conform to the standard automation template.
@@ -326,18 +364,18 @@ This feature allows you to launch the DefectDojo CLI tool in interactive mode fo
  | EnvValidator  | Done    | Validate required environment variables            |
  | TenableWAS    | Done    | Export findings from Tenable WAS                   |
  | SonarQube     | Done    | Fetch issues via SonarQube API - or use existing DD Integration                    |
- | BurpSuite     | Pending | Retrieve Burp XML reports via Local API            |
- | GitHub        | Work IP | Download GitHub scans for every org configured in `GitHub.Orgs`. These scans will eventually include CodeQL (Done), Secret Scanning (Done), and Dependabot (TODO) | 
+ | BurpSuite     | Done    | Scan local folder for BurpSuite XML reports and upload to DefectDojo            |
+ | GitHub        | Work IP | Download GitHub scans for every org configured in `GitHub.Orgs`. These scans will eventually include CodeQL (Done), Secret Scanning (Done), and Dependabot (TODO) |
  | DefectDojo    | Done    | Fetch and list products, engagements, tests, and product API scan configurations via API       |
  | Local Copy    | Pending | Copy all local docs to proper share                |
  | Uploader      | Done    | Upload all files to DD via API                     |
 
  ## Roadmap / Next Steps
- 1. Update individual tool functionality as new tools are added / tweaked. 
+ 1. Update individual tool functionality as new tools are added / tweaked.
 
  ###
  - Current tasks:
  - Future:
    - Implement GitHub Dependabot integration (if not handled by Dependency Track)
-   - Revisit BurpSuite folder picker necessity based on Burp module
-   - Reupload burp scan given directory (or use external tooling)
+   - Enhanced BurpSuite integration (automatic scan organization, naming conventions)
+   - Local file copying to shared drives integration

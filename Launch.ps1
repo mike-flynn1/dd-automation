@@ -38,6 +38,7 @@ $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'modules\Config.ps1')
 . (Join-Path $scriptDir 'modules\GitHub.ps1')
 . (Join-Path $scriptDir 'modules\TenableWAS.ps1')
+. (Join-Path $scriptDir 'modules\BurpSuite.ps1')
 . (Join-Path $scriptDir 'modules\EnvValidator.ps1')
 . (Join-Path $scriptDir 'DefectDojo.ps1')
 . (Join-Path $scriptDir 'Sonarqube.ps1')
@@ -120,7 +121,7 @@ function Initialize-GuiElements {
         switch ($name) {
             'TenableWAS' { $script:toolTip.SetToolTip($chk, "This checkbox downloads the specified Tenable scan to the Temp Directory specified in the log file.") }
             'SonarQube' { $script:toolTip.SetToolTip($chk, "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo") }
-            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Not yet functional") }
+            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Scans the specified folder for BurpSuite XML reports and uploads them to DefectDojo.") }
             'DefectDojo' { $script:toolTip.SetToolTip($chk, "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload.") }
             'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports and Secret Scanning JSON files, uploads to DefectDojo (if checked) to individual tests within the specified engagement.") }
         }
@@ -578,6 +579,11 @@ function Invoke-Automation {
             Process-SonarQube -Config $config
         }
 
+        # Process BurpSuite
+        if ($config.Tools.BurpSuite) {
+            Process-BurpSuite -Config $config
+        }
+
         # Process GitHub CodeQL
         if ($config.Tools.GitHub) {
             Process-GitHubCodeQL -Config $config
@@ -631,7 +637,7 @@ function Process-TenableWAS {
             $filePathString = ([string]$exportedFile).Trim()
 
             # Upload directly to the TenableWAS test only
-            Upload-DefectDojoScan -FilePath $filePathString -TestId $tenableTest.Id -ScanType 'Tenable Scan'
+            Upload-DefectDojoScan -FilePath $filePathString -TestId $tenableTest.Id -ScanType 'Tenable Scan' -CloseOldFindings $true
             Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $($tenableTest.Name)"
         }
     } catch {
@@ -649,6 +655,57 @@ function Process-SonarQube {
         Write-GuiMessage "SonarQube processing completed for test $($test.Name)"
     } catch {
         Write-GuiMessage "SonarQube processing failed: $_" 'ERROR'
+    }
+}
+
+function Process-BurpSuite {
+    param([hashtable]$Config)
+    Write-GuiMessage "Starting BurpSuite XML report processing..."
+    try {
+        # Get XML files from configured folder
+        $xmlFiles = Get-BurpSuiteReports -FolderPath $Config.Paths.BurpSuiteXmlFolder
+
+        if (-not $xmlFiles -or $xmlFiles.Count -eq 0) {
+            Write-GuiMessage "No BurpSuite XML files found in folder: $($Config.Paths.BurpSuiteXmlFolder)" 'WARNING'
+            return
+        }
+
+        Write-GuiMessage "Found $($xmlFiles.Count) BurpSuite XML report(s)"
+
+        if ($Config.Tools.DefectDojo) {
+            Write-GuiMessage "Uploading BurpSuite report to DefectDojo..."
+
+            # Get the specifically selected BurpSuite test
+            $burpTest = $script:cmbDDTestBurp.SelectedItem
+            if (-not $burpTest) {
+                Write-GuiMessage "No BurpSuite test selected for DefectDojo upload" 'WARNING'
+                return
+            }
+
+            # Upload only the first XML file found
+            $xmlFile = $xmlFiles[0]
+            $fileName = [System.IO.Path]::GetFileName($xmlFile)
+
+            if ($xmlFiles.Count -gt 1) {
+                Write-GuiMessage "Multiple XML files found. Uploading only: $fileName" 'WARNING'
+                Write-GuiMessage "Other files will be ignored. Process one scan at a time." 'WARNING'
+            }
+
+            try {
+                Write-GuiMessage "Uploading $fileName to DefectDojo test: $($burpTest.Title)"
+
+                # Ensure file path is explicitly converted to string
+                $filePathString = ([string]$xmlFile).Trim()
+
+                # Upload to DefectDojo using Burp Scan type
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $burpTest.Id -ScanType 'Burp Scan'
+                Write-GuiMessage "Successfully uploaded $fileName to DefectDojo test: $($burpTest.Title)"
+            } catch {
+                Write-GuiMessage "Failed to upload $fileName : $_" 'ERROR'
+            }
+        }
+    } catch {
+        Write-GuiMessage "BurpSuite processing failed: $_" 'ERROR'
     }
 }
 
