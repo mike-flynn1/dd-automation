@@ -9,6 +9,36 @@
 . (Join-Path $PSScriptRoot 'Config.ps1')
 . (Join-Path $PSScriptRoot 'Uploader.ps1')
 
+
+function Get-GitHubNextPageUri {
+    <#
+    .SYNOPSIS
+        Parses a GitHub Link response header and returns the URI for the next page, if available.
+    .PARAMETER LinkHeader
+        Full Link header string returned by GitHub REST endpoints (may contain multiple rel entries).
+    .OUTPUTS
+        string with the next-page URI when present; otherwise $null.
+    #>
+    param(
+        [string]$LinkHeader
+    )
+
+    if (-not $LinkHeader) { return $null }
+
+    foreach ($segment in ($LinkHeader -split ',')) {
+        $parts = $segment -split ';'
+        if ($parts.Count -lt 2) { continue }
+
+        $relPart = $parts[1].Trim()
+        if ($relPart -match 'rel="(?<rel>[^"]+)"' -and $Matches['rel'] -eq 'next') {
+            $uri = $parts[0].Trim()
+            return $uri.Trim('<', '>')
+        }
+    }
+
+    return $null
+}
+
 #DEBUG
 #Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'GitHub.log' -Overwrite
 
@@ -308,9 +338,94 @@ function GitHub-SecretScanDownload {
     }
 }
 
+
+function GitHub-DependabotDownload {
+    <#
+    .SYNOPSIS
+        Retrieves open Dependabot alerts for configured GitHub repositories and writes each repo's alerts to JSON.
+    .PARAMETER Owners
+        Optional override list of org names; defaults to GitHub.Orgs from config when not supplied.
+    .PARAMETER Limit
+        Page size used for repository listing and alerts pagination; defaults to 100 per GitHub API call.
+    .OUTPUTS
+        string containing full paths to the JSON files saved under %TEMP%\GitHubDependabot.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [string[]]$Owners,
+        [Parameter(Mandatory=$false)]
+        [int]$Limit = 100
+    )
+
+    $config = Get-Config
+    $targetOrgs = if ($Owners) { @($Owners) } else { @($config.GitHub.Orgs) }
+    if (-not $targetOrgs -or $targetOrgs.Count -eq 0) { Throw 'GitHub organizations not specified.' }
+
+    $baseUrl = $config.ApiBaseUrls.GitHub.TrimEnd('/')
+    $apiKey  = [Environment]::GetEnvironmentVariable('GITHUB_PAT')
+    if (-not $apiKey) { Throw 'Missing GitHub API token (GITHUB_PAT).' }
+
+    $headers = @{
+        Authorization = "Bearer $apiKey"
+        Accept        = 'application/vnd.github.v3+json'
+        'User-Agent'  = 'DefectDojo-Automation'
+    }
+
+    $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubDependabot'
+    if (-not (Test-Path $downloadRoot)) {
+        New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
+    }
+
+    $outputFiles = @()
+    $repos = Get-GitHubRepos -Owners $targetOrgs -Limit $Limit
+
+    foreach ($repo in $repos) {
+        $orgName = if ($repo.PSObject.Properties['ResolvedOrg']) { $repo.ResolvedOrg } elseif ($repo.owner -and $repo.owner.login) { $repo.owner.login } else { $null }
+        $repoFullName = if ($repo.full_name) { $repo.full_name } elseif ($orgName -and $repo.name) { "{0}/{1}" -f $orgName, $repo.name } else { $repo.name }
+        $repoName = if ($repo.name) { $repo.name } else { $repoFullName }
+        Write-Log -Message ("Processing Dependabot alerts for {0}" -f $repoFullName) -Level 'INFO'
+
+        $uri = "{0}/repos/{1}/dependabot/alerts?state=open&per_page={2}" -f $baseUrl, $repoFullName, $Limit
+        $repoAlerts = @()
+
+        while ($uri) {
+            try {
+                $response = Invoke-WebRequest -Method Get -Uri $uri -Headers $headers -UseBasicParsing
+                $alerts = $response.Content | ConvertFrom-Json
+                $parsedAlerts = @($alerts)
+                if ($parsedAlerts.Count -gt 0) {
+                    $repoAlerts += $parsedAlerts
+                }
+
+                $uri = Get-GitHubNextPageUri -LinkHeader $response.Headers['Link']
+            }
+            catch {
+                Write-Log -Message ("Failed to retrieve Dependabot alerts for {0}: {1}" -f $repoFullName, $_) -Level 'ERROR'
+                $uri = $null
+            }
+        }
+
+        if ($repoAlerts.Count -eq 0) {
+            Write-Log -Message ("No open Dependabot alerts for {0}" -f $repoFullName) -Level 'INFO'
+            continue
+        }
+
+        $fileName = if ($orgName) { "{0}-{1}-dependabot.json" -f $orgName, $repoName } else { "{0}-dependabot.json" -f $repoName }
+        $outFile = Join-Path $downloadRoot $fileName
+        $repoAlerts | ConvertTo-Json -Depth 6 | Out-File -FilePath $outFile -Encoding UTF8
+        Write-Log -Message ("Saved {0} Dependabot alerts to {1}" -f $repoAlerts.Count, $outFile) -Level 'INFO'
+        $outputFiles += $outFile
+    }
+
+    return $outputFiles
+}
+
 #To test:
 #Get-GitHubRepos -Owners 'BAMTech-MyVector','BAMTechnologies' -Limit 10
 
 #GitHub-CodeQLDownload -Owners 'BAMTech-MyVector' -Limit 10
 
 #GitHub-SecretScanDownload -Owners 'BAMTech-MyVector' -Limit 50
+
+#GitHub-DependabotDownload -Owners 'BAMTech-SBIR-DTK' -Limit 50

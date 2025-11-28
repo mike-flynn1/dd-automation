@@ -32,6 +32,7 @@
         TenableWASTestId  = 0  # Enter the DefectDojo test Id for TenableWAS
         SonarQubeTestId   = 0  # Enter the DefectDojo test Id for SonarQube
         BurpSuiteTestId   = 0  # Enter the DefectDojo test Id for BurpSuite
+    GitHubDependabotTestId = 0  # Enter the DefectDojo test Id for GitHub Dependabot alerts
         MinimumSeverity   = 'Low'  # Enter the minimum severity to upload
         APIScanConfigId = 1
     }

@@ -150,13 +150,14 @@ function Initialize-GuiElements {
 
     # DefectDojo Controls
     $ddControls = @{
-        lblDDProduct      = [Tuple]::Create('DefectDojo Product:', 240)
-        lblDDEng          = [Tuple]::Create('Engagement:', 270)
-        lblDDApiScan      = [Tuple]::Create('API Scan Config:', 300)
-        lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 330)
-        lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 360)
-        lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 390)
-        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 420)
+        lblDDProduct            = [Tuple]::Create('DefectDojo Product:', 240)
+        lblDDEng                = [Tuple]::Create('Engagement:', 270)
+        lblDDApiScan            = [Tuple]::Create('API Scan Config:', 300)
+        lblDDTestTenable        = [Tuple]::Create('TenableWAS Test:', 330)
+        lblDDTestSonar          = [Tuple]::Create('SonarQube Test:', 360)
+        lblDDTestBurp           = [Tuple]::Create('BurpSuite Test:', 390)
+        lblDDTestDependabot     = [Tuple]::Create('Dependabot Test:', 420)
+        lblDDSeverity           = [Tuple]::Create('Minimum Severity:', 450)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -172,7 +173,7 @@ function Initialize-GuiElements {
     $grpManualTool = New-Object System.Windows.Forms.GroupBox
     $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
     $grpManualTool.Size = New-Object System.Drawing.Size(580, 80)
-    $grpManualTool.Location = New-Object System.Drawing.Point(10, 455)
+    $grpManualTool.Location = New-Object System.Drawing.Point(10, 470)
     $form.Controls.Add($grpManualTool)
 
     # Launch DefectDojo CLI Button
@@ -193,7 +194,7 @@ function Initialize-GuiElements {
     $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
 
     # Status ListBox (moved down to accommodate new group)
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 130); Location = New-Object System.Drawing.Point(10, 545) }
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 130); Location = New-Object System.Drawing.Point(10, 555) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
@@ -232,6 +233,7 @@ function Register-EventHandlers {
     $chkBoxes['GitHub'].Add_CheckedChanged({
         # GitHub will use the selected engagement, no separate test selection needed
         $script:txtGitHubOrgs.Enabled = $this.Checked
+        $script:cmbDDTestDependabot.Enabled = $this.Checked -and $script:cmbDDTestDependabot.Items.Count -gt 0
     })
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
@@ -288,7 +290,7 @@ function Handle-EngagementChange {
     Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
     try {
         $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
-        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp)) {
+        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestDependabot)) {
             $cmb.Items.Clear()
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
@@ -299,11 +301,13 @@ function Handle-EngagementChange {
         $script:cmbDDTestTenable.DisplayMember = 'Title'   # Show test title for TenableWAS
         $script:cmbDDTestSonar.DisplayMember = 'Title'     # Show test type title for SonarQube
         $script:cmbDDTestBurp.DisplayMember = 'Title'      # Show test type title for BurpSuite
+        $script:cmbDDTestDependabot.DisplayMember = 'Title'
 
         # Re-evaluate enabled state based on tool selection and if tests were found
         $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
-        $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
+    $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
+    $script:cmbDDTestDependabot.Enabled = $script:chkBoxes['GitHub'].Checked -and $tests.Count -gt 0
         if (-not $tests) {
             Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
         }
@@ -489,6 +493,10 @@ function Prepopulate-FormFromConfig {
                             $selectedBurpTest = $script:cmbDDTestBurp.Items | Where-Object { $_.Id -eq $Config.DefectDojo.BurpSuiteTestId }
                             if ($selectedBurpTest) { $script:cmbDDTestBurp.SelectedItem = $selectedBurpTest }
                         }
+                        if ($Config.DefectDojo.GitHubDependabotTestId) {
+                            $selectedDependabotTest = $script:cmbDDTestDependabot.Items | Where-Object { $_.Id -eq $Config.DefectDojo.GitHubDependabotTestId }
+                            if ($selectedDependabotTest) { $script:cmbDDTestDependabot.SelectedItem = $selectedDependabotTest }
+                        }
                     }
                 }
             }
@@ -592,6 +600,11 @@ function Invoke-Automation {
         # Process GitHub Secret Scanning
         if ($config.Tools.GitHub) {
             Process-GitHubSecretScanning -Config $config
+        }
+
+        # Process GitHub Dependabot alerts
+        if ($config.Tools.GitHub) {
+            Process-GitHubDependabot -Config $config
         }
 
         # Save DefectDojo selections back to config
@@ -803,7 +816,14 @@ function Process-GitHubSecretScanning {
     param([hashtable]$Config)
     Write-GuiMessage "Starting GitHub Secret Scanning download..."
     try {
-        GitHub-SecretScanDownload -Owner $Config.GitHub.org
+        $orgs = @($Config.GitHub.Orgs)
+        if (-not $orgs -or $orgs.Count -eq 0) {
+            Write-GuiMessage 'No GitHub organizations configured. Skipping GitHub Secret Scanning.' 'WARNING'
+            return
+        }
+
+        Write-GuiMessage ("Processing GitHub organizations for secret scanning: {0}" -f ($orgs -join ', '))
+        GitHub-SecretScanDownload -Owners $orgs
         Write-GuiMessage "GitHub Secret Scanning download completed."
 
         if ($Config.Tools.DefectDojo) {
@@ -878,6 +898,62 @@ function Process-GitHubSecretScanning {
     }
 }
 
+function Process-GitHubDependabot {
+    param([hashtable]$Config)
+    Write-GuiMessage "Starting GitHub Dependabot download..."
+    try {
+        $orgs = @($Config.GitHub.Orgs)
+        if (-not $orgs -or $orgs.Count -eq 0) {
+            Write-GuiMessage 'No GitHub organizations configured. Skipping Dependabot export.' 'WARNING'
+            return
+        }
+
+        Write-GuiMessage ("Processing GitHub organizations for Dependabot: {0}" -f ($orgs -join ', '))
+        $dependabotFiles = GitHub-DependabotDownload -Owners $orgs
+        Write-GuiMessage "GitHub Dependabot download completed."
+
+        if (-not $dependabotFiles -or $dependabotFiles.Count -eq 0) {
+            Write-GuiMessage 'No open Dependabot alerts downloaded; skipping uploads.'
+            return
+        }
+
+        if ($Config.Tools.DefectDojo) {
+            Write-GuiMessage "Uploading GitHub Dependabot JSON files to DefectDojo..."
+            $dependabotTest = $script:cmbDDTestDependabot.SelectedItem
+            if (-not $dependabotTest) {
+                Write-GuiMessage 'No DefectDojo Dependabot test selected; skipping uploads.' 'WARNING'
+                return
+            }
+
+            $uploadErrors = 0
+            foreach ($file in $dependabotFiles) {
+                try {
+                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTest.Id -ScanType 'Universal Parser - GitHub Dependabot Alerts'
+                    Write-GuiMessage "Uploaded Dependabot JSON: $([System.IO.Path]::GetFileName($file)) to test $($dependabotTest.Name)"
+                } catch {
+                    $uploadErrors++
+                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
+                }
+            }
+
+            if ($uploadErrors -eq 0) {
+                Write-GuiMessage "GitHub Dependabot JSON files uploaded successfully to $($dependabotTest.Name)"
+                $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubDependabot'
+                try {
+                    Remove-Item -Path $downloadRoot -Recurse -Force
+                    Write-GuiMessage "GitHub Dependabot download directory cleaned up successfully"
+                } catch {
+                    Write-GuiMessage "Failed to clean up Dependabot download directory: $_" 'WARNING'
+                }
+            } else {
+                Write-GuiMessage "Dependabot uploads completed with $uploadErrors error(s); downloaded files retained for review." 'WARNING'
+            }
+        }
+    } catch {
+        Write-GuiMessage "GitHub Dependabot processing failed: $_" 'ERROR'
+    }
+}
+
 function Save-DefectDojoConfig {
     param([hashtable]$Config)
 
@@ -888,6 +964,7 @@ function Save-DefectDojoConfig {
         TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
         SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
         BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
+        GitHubDependabotTest = $script:cmbDDTestDependabot.SelectedItem
         MinimumSeverity = $script:cmbDDSeverity.SelectedItem
     }
 
@@ -897,6 +974,7 @@ function Save-DefectDojoConfig {
     if ($Config.Tools.TenableWAS -and -not $selections.TenableWASTest) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
     if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
+    if ($Config.Tools.GitHub -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
 
     if ($incomplete) {
         Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
@@ -911,6 +989,7 @@ function Save-DefectDojoConfig {
         TenableWASTestId  = $selections.TenableWASTest.Id
         SonarQubeTestId   = $selections.SonarQubeTest.Id
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
+        GitHubDependabotTestId = $selections.GitHubDependabotTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
     }
 

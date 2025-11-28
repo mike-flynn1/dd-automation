@@ -353,3 +353,111 @@ Describe 'GitHub-SecretScanDownload' {
         ($logContent | Select-String -Pattern 'Secret Scanning not enabled').Matches.Count | Should -BeGreaterThan 0
     }
 }
+
+Describe 'GitHub-DependabotDownload' {
+    BeforeAll {
+        $moduleDir = $env:DDGitHubModulePath
+        . (Join-Path $moduleDir 'GitHub.ps1')
+    }
+
+    BeforeEach {
+        $moduleDir = $env:DDGitHubModulePath
+        . (Join-Path $moduleDir 'Logging.ps1')
+        Remove-Item Env:GITHUB_PAT -ErrorAction SilentlyContinue
+        $script:OriginalTemp = $env:TEMP
+        $script:OriginalTmp = $env:TMP
+        $script:OriginalTmpDir = $env:TMPDIR
+        $env:TEMP = $TestDrive
+        $env:TMP = $TestDrive
+        $env:TMPDIR = $TestDrive
+        $script:TestLogDir = Join-Path $TestDrive 'dependabot'
+        Initialize-Log -LogDirectory $script:TestLogDir -LogFileName 'github-tests.log' -Overwrite
+        $script:TestLogFile = Join-Path $script:TestLogDir 'github-tests.log'
+    }
+
+    AfterEach {
+        $env:TEMP = $script:OriginalTemp
+        $env:TMP = $script:OriginalTmp
+        if ($script:OriginalTmpDir) {
+            $env:TMPDIR = $script:OriginalTmpDir
+        } else {
+            Remove-Item Env:TMPDIR -ErrorAction SilentlyContinue
+        }
+        $downloadRoot = Join-Path $TestDrive 'GitHubDependabot'
+        Remove-Item -Path $downloadRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'Throws when the GitHub token is missing' {
+        $config = @{
+            GitHub = @{
+                Orgs = @('OrgOne')
+            }
+            ApiBaseUrls = @{
+                GitHub = 'https://api.github.test'
+            }
+        }
+        Mock Get-Config { return $config }
+
+        { GitHub-DependabotDownload } | Should -Throw 'Missing GitHub API token (GITHUB_PAT).'
+    }
+
+    It 'Exports JSON files when open Dependabot alerts exist' {
+        $env:GITHUB_PAT = 'token'
+        $config = @{
+            GitHub = @{
+                Orgs = @('OrgOne')
+            }
+            ApiBaseUrls = @{
+                GitHub = 'https://api.github.test'
+            }
+        }
+        Mock Get-Config { return $config }
+        Mock Get-GitHubRepos {
+            @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
+        }
+        Mock Invoke-WebRequest {
+            [pscustomobject]@{
+                Content = '[{"number":1,"state":"open","fix_available":true,"security_advisory":{"ghsa_id":"GHSA-1234","summary":"summary","severity":"medium","cve_id":"CVE-2024-1234","cvss_vector_string":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},"dependency":{"manifest_path":"package.json","vulnerable_version_range":"<2.0.0","package":{"name":"example","ecosystem":"npm"}},"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-02T00:00:00Z","html_url":"https://github.com/OrgOne/repo/alerts/1"}]'
+                Headers = @{}
+            }
+        } -ParameterFilter { $Uri -like '*dependabot/alerts*' }
+
+        GitHub-DependabotDownload
+
+        $downloadRoot = Join-Path $TestDrive 'GitHubDependabot'
+        $jsonFiles = @(Get-ChildItem -Path $downloadRoot -Filter '*-dependabot.json' -Recurse | Select-Object -ExpandProperty FullName)
+            $jsonFiles.Count | Should -Be 1
+        $jsonPath = $jsonFiles[0].Trim()
+        $records = Get-Content -Raw -Path $jsonPath | ConvertFrom-Json
+        $records.Count | Should -Be 1
+        $records[0].number | Should -Be 1
+        $records[0].state | Should -Be 'open'
+    }
+
+    It 'Logs when no open Dependabot alerts are returned' {
+        $env:GITHUB_PAT = 'token'
+        $config = @{
+            GitHub = @{
+                Orgs = @('OrgOne')
+            }
+            ApiBaseUrls = @{
+                GitHub = 'https://api.github.test'
+            }
+        }
+        Mock Get-Config { return $config }
+        Mock Get-GitHubRepos {
+            @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
+        }
+        Mock Invoke-WebRequest {
+            [pscustomobject]@{
+                Content = '[]'
+                Headers = @{}
+            }
+        } -ParameterFilter { $Uri -like '*dependabot/alerts*' }
+
+        GitHub-DependabotDownload
+
+        $logContent = Get-Content $script:TestLogFile
+        ($logContent | Select-String -Pattern 'No open Dependabot alerts').Matches.Count | Should -BeGreaterThan 0
+    }
+}
