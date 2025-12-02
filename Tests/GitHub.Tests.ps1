@@ -188,13 +188,13 @@ Describe 'GitHub-CodeQLDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-RestMethod {
+        Mock Invoke-GitHubPagedJson {
             @(
                 [pscustomobject]@{ id = 2; category = 'codeql'; created_at = [datetime]'2024-06-01'; results_count = 2; url = 'https://analysis/2'; name = 'repo' },
                 [pscustomobject]@{ id = 1; category = 'codeql'; created_at = [datetime]'2024-05-01'; results_count = 1; url = 'https://analysis/1'; name = 'repo' },
                 [pscustomobject]@{ id = 3; category = 'alerts'; created_at = [datetime]'2024-04-01'; results_count = 0; url = 'https://analysis/3'; name = 'repo' }
             )
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
         Mock Invoke-WebRequest {}
 
         GitHub-CodeQLDownload
@@ -217,9 +217,9 @@ Describe 'GitHub-CodeQLDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-RestMethod {
+        Mock Invoke-GitHubPagedJson {
             throw (New-Object System.Exception 'REST failure')
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
         Mock Invoke-WebRequest {}
 
         { GitHub-CodeQLDownload } | Should -Not -Throw
@@ -239,7 +239,7 @@ Describe 'GitHub-CodeQLDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-RestMethod { @() } -ParameterFilter { $Uri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
+        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
         Mock Invoke-WebRequest {}
 
         GitHub-CodeQLDownload
@@ -292,9 +292,9 @@ Describe 'GitHub-SecretScanDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-WebRequest {
-            [pscustomobject]@{ Content = '[{"id":1}]' }
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
+        Mock Invoke-GitHubPagedJson {
+            @([pscustomobject]@{ id = 1 })
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
 
         GitHub-SecretScanDownload
 
@@ -316,9 +316,7 @@ Describe 'GitHub-SecretScanDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-WebRequest {
-            [pscustomobject]@{ Content = '[]' }
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
+        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
 
         GitHub-SecretScanDownload
 
@@ -340,11 +338,11 @@ Describe 'GitHub-SecretScanDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-WebRequest {
+        Mock Invoke-GitHubPagedJson {
             $ex = New-Object System.Exception 'Forbidden'
             Add-Member -InputObject $ex -MemberType NoteProperty -Name Response -Value ([pscustomobject]@{ Content = 'Secret Scanning is disabled for this repository.' }) -Force
             throw $ex
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
 
         GitHub-SecretScanDownload
 
@@ -415,12 +413,31 @@ Describe 'GitHub-DependabotDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-WebRequest {
-            [pscustomobject]@{
-                Content = '[{"number":1,"state":"open","fix_available":true,"security_advisory":{"ghsa_id":"GHSA-1234","summary":"summary","severity":"medium","cve_id":"CVE-2024-1234","cvss_vector_string":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},"dependency":{"manifest_path":"package.json","vulnerable_version_range":"<2.0.0","package":{"name":"example","ecosystem":"npm"}},"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-02T00:00:00Z","html_url":"https://github.com/OrgOne/repo/alerts/1"}]'
-                Headers = @{}
-            }
-        } -ParameterFilter { $Uri -like '*dependabot/alerts*' }
+        Mock Invoke-GitHubPagedJson {
+            @([pscustomobject]@{
+                number = 1
+                state = 'open'
+                fix_available = $true
+                security_advisory = [pscustomobject]@{
+                    ghsa_id = 'GHSA-1234'
+                    summary = 'summary'
+                    severity = 'medium'
+                    cve_id = 'CVE-2024-1234'
+                    cvss_vector_string = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'
+                }
+                dependency = [pscustomobject]@{
+                    manifest_path = 'package.json'
+                    vulnerable_version_range = '<2.0.0'
+                    package = [pscustomobject]@{
+                        name = 'example'
+                        ecosystem = 'npm'
+                    }
+                }
+                created_at = '2024-01-01T00:00:00Z'
+                updated_at = '2024-01-02T00:00:00Z'
+                html_url = 'https://github.com/OrgOne/repo/alerts/1'
+            })
+        } -ParameterFilter { $InitialUri -like '*dependabot/alerts*' }
 
         GitHub-DependabotDownload
 
@@ -448,12 +465,7 @@ Describe 'GitHub-DependabotDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-WebRequest {
-            [pscustomobject]@{
-                Content = '[]'
-                Headers = @{}
-            }
-        } -ParameterFilter { $Uri -like '*dependabot/alerts*' }
+        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -like '*dependabot/alerts*' }
 
         GitHub-DependabotDownload
 

@@ -9,6 +9,148 @@
 . (Join-Path $PSScriptRoot 'Config.ps1')
 . (Join-Path $PSScriptRoot 'Uploader.ps1')
 
+function Get-GitHubContext {
+    <#
+    .SYNOPSIS
+        Retrieves shared configuration values for GitHub API calls.
+    .PARAMETER Owners
+        Optional override list of organization names; defaults to config.GitHub.Orgs.
+    .OUTPUTS
+        PSCustomObject with Config, Orgs, BaseUrl, and ApiKey properties.
+    #>
+    param(
+        [string[]]$Owners
+    )
+
+    $config = Get-Config
+    $targetOrgs = if ($Owners) { @($Owners) } else { @($config.GitHub.Orgs) }
+    if (-not $targetOrgs -or $targetOrgs.Count -eq 0) {
+        Throw 'GitHub organizations not specified.'
+    }
+
+    $baseUrl = $config.ApiBaseUrls.GitHub.TrimEnd('/')
+    $apiKey  = [Environment]::GetEnvironmentVariable('GITHUB_PAT')
+    if (-not $apiKey) { Throw 'Missing GitHub API token (GITHUB_PAT).' }
+
+    return [pscustomobject]@{
+        Config = $config
+        Orgs   = $targetOrgs
+        BaseUrl = $baseUrl
+        ApiKey = $apiKey
+    }
+}
+
+function New-GitHubHeaders {
+    <#
+    .SYNOPSIS
+        Builds standard headers for GitHub API calls.
+    .PARAMETER Token
+        GitHub personal access token.
+    .PARAMETER Accept
+        Accept header value; defaults to application/vnd.github.v3+json.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Token,
+        [string]$Accept = 'application/vnd.github.v3+json'
+    )
+
+    return @{
+        Authorization = "Bearer $Token"
+        Accept        = $Accept
+        'User-Agent'  = 'DefectDojo-Automation'
+    }
+}
+
+function Ensure-DownloadRoot {
+    <#
+    .SYNOPSIS
+        Creates and returns a temp folder for GitHub downloads.
+    .PARAMETER FolderName
+        Name of the subfolder to create under the OS temp directory.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FolderName
+    )
+
+    $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) $FolderName
+    if (-not (Test-Path $downloadRoot)) {
+        New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
+    }
+    return $downloadRoot
+}
+
+function Get-GitHubRepoIdentity {
+    <#
+    .SYNOPSIS
+        Derives org, name, and full-name values for a GitHub repository object.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [psobject]$Repo
+    )
+
+    $orgName = if ($Repo.PSObject.Properties['ResolvedOrg']) {
+        $Repo.ResolvedOrg
+    } elseif ($Repo.owner -and $Repo.owner.login) {
+        $Repo.owner.login
+    } else {
+        $null
+    }
+
+    $repoName = if ($Repo.name) { $Repo.name } else { $Repo.full_name }
+    $fullName = if ($Repo.full_name) {
+        $Repo.full_name
+    } elseif ($orgName -and $repoName) {
+        '{0}/{1}' -f $orgName, $repoName
+    } else {
+        $repoName
+    }
+
+    return [pscustomobject]@{
+        OrgName  = $orgName
+        RepoName = $repoName
+        FullName = $fullName
+    }
+}
+
+function Invoke-GitHubPagedJson {
+    <#
+    .SYNOPSIS
+        Retrieves all pages for a GitHub REST endpoint that returns JSON arrays.
+    .PARAMETER InitialUri
+        First page URI.
+    .PARAMETER Headers
+        Headers to use for each request.
+    .OUTPUTS
+        Array of deserialized JSON objects.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$InitialUri,
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers
+    )
+
+    $items = @()
+    $nextUri = $InitialUri
+    while ($nextUri) {
+        $response = Invoke-WebRequest -Method Get -Uri $nextUri -Headers $Headers -UseBasicParsing
+        $pageItems = $response.Content | ConvertFrom-Json
+        if ($null -ne $pageItems) {
+            if ($pageItems -is [System.Collections.IEnumerable] -and -not ($pageItems -is [string])) {
+                $items += @($pageItems)
+            } else {
+                $items += $pageItems
+            }
+        }
+        $nextUri = Get-GitHubNextPageUri -LinkHeader $response.Headers['Link']
+    }
+
+    return $items
+}
+
 
 function Get-GitHubNextPageUri {
     <#
@@ -61,21 +203,11 @@ function Get-GitHubRepos {
         [int]$Limit = 200
     )
 
-    $config = Get-Config
-    $targetOrgs = if ($Owners) { @($Owners) } else { @($config.GitHub.Orgs) }
-    if (-not $targetOrgs -or $targetOrgs.Count -eq 0) {
-        Throw 'GitHub organizations not specified.'
-    }
-
-    $baseUrl = $config.ApiBaseUrls.GitHub.TrimEnd('/')
-    $apiKey  = [Environment]::GetEnvironmentVariable('GITHUB_PAT')
-    if (-not $apiKey) { Throw 'Missing GitHub API token (GITHUB_PAT).' }
-
-    $headers = @{
-        Authorization = "Bearer $apiKey"
-        Accept        = 'application/vnd.github.v3+json'
-        'User-Agent'  = 'DefectDojo-Automation'
-    }
+    $context = Get-GitHubContext -Owners $Owners
+    $config = $context.Config
+    $targetOrgs = $context.Orgs
+    $baseUrl = $context.BaseUrl
+    $headers = New-GitHubHeaders -Token $context.ApiKey
 
     $allRepos = @()
     foreach ($org in $targetOrgs) {
@@ -195,75 +327,60 @@ function GitHub-CodeQLDownload {
         [int]$Limit = 200
     )
 
-    $config = Get-Config
-    $targetOrgs = if ($Owners) { @($Owners) } else { @($config.GitHub.Orgs) }
-    if (-not $targetOrgs -or $targetOrgs.Count -eq 0) { Throw 'GitHub organizations not specified.' }
-
-    $repos   = Get-GitHubRepos -Owners $targetOrgs -Limit $Limit
-    $baseUrl = $config.ApiBaseUrls.GitHub.TrimEnd('/')
-    $apiKey  = [Environment]::GetEnvironmentVariable('GITHUB_PAT')
-    if (-not $apiKey) { Throw 'Missing GitHub API token (GITHUB_PAT).' }
-
-    $headers = @{
-        Authorization = "Bearer $apiKey"
-        Accept        = 'application/sarif+json'
-    }
-
-    $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
-    if (-not (Test-Path $downloadRoot)) {
-        New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-    }
+    $context = Get-GitHubContext -Owners $Owners
+    $repos = Get-GitHubRepos -Owners $context.Orgs -Limit $Limit
+    $headers = New-GitHubHeaders -Token $context.ApiKey -Accept 'application/sarif+json'
+    $downloadRoot = Ensure-DownloadRoot -FolderName 'GitHubCodeScanning'
 
     foreach ($repo in $repos) {
-        $orgName = if ($repo.PSObject.Properties['ResolvedOrg']) { $repo.ResolvedOrg } elseif ($repo.owner -and $repo.owner.login) { $repo.owner.login } else { $null }
-        $repoName = if ($repo.name) { $repo.name } else { $null }
-        $repoFullName = if ($repo.full_name) { $repo.full_name } elseif ($orgName -and $repoName) { "{0}/{1}" -f $orgName, $repoName } else { $repoName }
-        Write-Log -Message ("Processing repository {0} (Org: {1})" -f $repoFullName, $orgName) -Level 'INFO'
+        $identity = Get-GitHubRepoIdentity -Repo $repo
+        $repoFullName = $identity.FullName
+        Write-Log -Message ("Processing repository {0} (Org: {1})" -f $repoFullName, $identity.OrgName) -Level 'INFO'
         try {
-            $uriAnalyses = "{0}/repos/{1}/code-scanning/analyses?per_page={2}" -f $baseUrl, $repoFullName, $Limit
-            $analyses    = Invoke-RestMethod -Method Get -Uri $uriAnalyses -Headers $headers -UseBasicParsing
+            $uriAnalyses = "{0}/repos/{1}/code-scanning/analyses?per_page={2}" -f $context.BaseUrl, $repoFullName, $Limit
+            $analyses = Invoke-GitHubPagedJson -InitialUri $uriAnalyses -Headers $headers
         }
         catch {
             Write-Log -Message ("Failed to list analyses for {0}: {1}" -f $repoFullName, $_) -Level 'ERROR'
             continue
         }
+
         if (-not $analyses -or $analyses.Count -eq 0) {
             Write-Log -Message ("No analyses for {0}, skipping" -f $repoFullName) -Level 'INFO'
             continue
         }
 
-    # Group analyses by category and select the latest one based on created_at
-    $latestAnalyses = $analyses | Group-Object -Property category | ForEach-Object {
-        $_.Group | Sort-Object -Property created_at -Descending | Select-Object -First 1
-    }
-
-    foreach ($analysis in $latestAnalyses) {
-    $analysisId = $analysis.id
-
-    # skip if no Results
-    if ($analysis.results_count -lt 1) {
-        Write-Log -Message ("No Results for analysis {0}, skipping" -f $analysisId) -Level 'INFO'
-        continue
-    }
-    $sarifUrl   = $analysis.url
-    $fileName   = if ($orgName) { "{0}-{1}-{2}.sarif" -f $orgName, $repo.name, $analysisId } else { "{0}-{1}.sarif" -f $repo.name, $analysisId }
-    $outFile    = Join-Path $downloadRoot $fileName
-
-    Write-Log -Message ("Downloading SARIF file {0} from {1}" -f $fileName, $sarifUrl) -Level 'INFO'
-    try {
-        Invoke-WebRequest -Uri $sarifUrl -Headers $headers -OutFile $outFile -UseBasicParsing
-        Write-Log -Message ("Downloaded SARIF file to {0}" -f $outFile) -Level 'INFO'
-    }
-    catch {
-        $errorContent = $_.Exception.Response.Content
-        if ($errorContent -match "Advanced Security must be enabled") {
-            Write-Log -Message ("Advanced Security not enabled for {0}/{1}, skipping download" -f $repoFullName, $analysisId) -Level 'WARNING'
+        $latestAnalyses = $analyses | Group-Object -Property category | ForEach-Object {
+            $_.Group | Sort-Object -Property created_at -Descending | Select-Object -First 1
         }
-        else {
-            Write-Log -Message ("Failed to download SARIF for {0}/{1}: {2}" -f $repoFullName, $analysisId, $_) -Level 'ERROR'
+
+        foreach ($analysis in $latestAnalyses) {
+            $analysisId = $analysis.id
+            if ($analysis.results_count -lt 1) {
+                Write-Log -Message ("No Results for analysis {0}, skipping" -f $analysisId) -Level 'INFO'
+                continue
+            }
+
+            $sarifUrl = $analysis.url
+            $repoName = $identity.RepoName
+            $fileName = if ($identity.OrgName) { "{0}-{1}-{2}.sarif" -f $identity.OrgName, $repoName, $analysisId } else { "{0}-{1}.sarif" -f $repoName, $analysisId }
+            $outFile = Join-Path $downloadRoot $fileName
+
+            Write-Log -Message ("Downloading SARIF file {0} from {1}" -f $fileName, $sarifUrl) -Level 'INFO'
+            try {
+                Invoke-WebRequest -Uri $sarifUrl -Headers $headers -OutFile $outFile -UseBasicParsing
+                Write-Log -Message ("Downloaded SARIF file to {0}" -f $outFile) -Level 'INFO'
+            }
+            catch {
+                $errorContent = $_.Exception.Response.Content
+                if ($errorContent -match 'Advanced Security must be enabled') {
+                    Write-Log -Message ("Advanced Security not enabled for {0}/{1}, skipping download" -f $repoFullName, $analysisId) -Level 'WARNING'
+                }
+                else {
+                    Write-Log -Message ("Failed to download SARIF for {0}/{1}: {2}" -f $repoFullName, $analysisId, $_) -Level 'ERROR'
+                }
+            }
         }
-    }
-    }
     }
 }
 
@@ -284,51 +401,35 @@ function GitHub-SecretScanDownload {
         [int]$Limit = 200
     )
 
-    $config = Get-Config
-    $targetOrgs = if ($Owners) { @($Owners) } else { @($config.GitHub.Orgs) }
-    if (-not $targetOrgs -or $targetOrgs.Count -eq 0) { Throw 'GitHub organizations not specified.' }
-
-    $repos   = Get-GitHubRepos -Owners $targetOrgs -Limit $Limit
-    $baseUrl = $config.ApiBaseUrls.GitHub.TrimEnd('/')
-    $apiKey  = [Environment]::GetEnvironmentVariable('GITHUB_PAT')
-    if (-not $apiKey) { Throw 'Missing GitHub API token (GITHUB_PAT).' }
-
-    $headers = @{
-        Authorization = "Bearer $apiKey"
-        Accept        = 'application/vnd.github.v3+json'
-        'User-Agent'  = 'DefectDojo-Automation'
-    }
-
-    $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubSecretScanning'
-    if (-not (Test-Path $downloadRoot)) {
-        New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-    }
+    $context = Get-GitHubContext -Owners $Owners
+    $repos = Get-GitHubRepos -Owners $context.Orgs -Limit $Limit
+    $headers = New-GitHubHeaders -Token $context.ApiKey
+    $downloadRoot = Ensure-DownloadRoot -FolderName 'GitHubSecretScanning'
 
     foreach ($repo in $repos) {
-        $orgName = if ($repo.PSObject.Properties['ResolvedOrg']) { $repo.ResolvedOrg } elseif ($repo.owner -and $repo.owner.login) { $repo.owner.login } else { $null }
-        $repoFullName = if ($repo.full_name) { $repo.full_name } elseif ($orgName -and $repo.name) { "{0}/{1}" -f $orgName, $repo.name } else { $repo.name }
+        $identity = Get-GitHubRepoIdentity -Repo $repo
+        $repoFullName = $identity.FullName
         Write-Log -Message ("Processing repository {0} for secret scanning alerts" -f $repoFullName) -Level 'INFO'
 
         try {
-            $uriAlerts = "{0}/repos/{1}/secret-scanning/alerts?state=open&per_page={2}" -f $baseUrl, $repoFullName, $Limit
-            $response = Invoke-WebRequest -Method Get -Uri $uriAlerts -Headers $headers -UseBasicParsing
+            $uriAlerts = "{0}/repos/{1}/secret-scanning/alerts?state=open&per_page={2}" -f $context.BaseUrl, $repoFullName, $Limit
+            $alerts = Invoke-GitHubPagedJson -InitialUri $uriAlerts -Headers $headers
 
-            $alerts = $response.Content | ConvertFrom-Json
             if (-not $alerts -or $alerts.Count -eq 0) {
                 Write-Log -Message ("No open secret scanning alerts for {0}" -f $repoFullName) -Level 'INFO'
                 continue
             }
 
-            $fileName = if ($orgName) { "{0}-{1}-secrets.json" -f $orgName, $repo.name } else { "{0}-secrets.json" -f $repo.name }
+            $fileName = if ($identity.OrgName) { "{0}-{1}-secrets.json" -f $identity.OrgName, $identity.RepoName } else { "{0}-secrets.json" -f $identity.RepoName }
             $outFile = Join-Path $downloadRoot $fileName
 
             Write-Log -Message ("Saving {0} secret scanning alerts to {1}" -f $alerts.Count, $fileName) -Level 'INFO'
-            $response.Content | Out-File -FilePath $outFile -Encoding UTF8
+            $alerts | ConvertTo-Json -Depth 6 | Out-File -FilePath $outFile -Encoding UTF8
             Write-Log -Message ("Saved secret scanning alerts to {0}" -f $outFile) -Level 'INFO'
         }
         catch {
             $errorContent = $_.Exception.Response.Content
-            if ($errorContent -match "Secret Scanning is disabled") {
+            if ($errorContent -match 'Secret Scanning is disabled') {
                 Write-Log -Message ("Secret Scanning not enabled for {0}, skipping secret scanning" -f $repoFullName) -Level 'WARNING'
             }
             else {
@@ -358,52 +459,25 @@ function GitHub-DependabotDownload {
         [int]$Limit = 100
     )
 
-    $config = Get-Config
-    $targetOrgs = if ($Owners) { @($Owners) } else { @($config.GitHub.Orgs) }
-    if (-not $targetOrgs -or $targetOrgs.Count -eq 0) { Throw 'GitHub organizations not specified.' }
-
-    $baseUrl = $config.ApiBaseUrls.GitHub.TrimEnd('/')
-    $apiKey  = [Environment]::GetEnvironmentVariable('GITHUB_PAT')
-    if (-not $apiKey) { Throw 'Missing GitHub API token (GITHUB_PAT).' }
-
-    $headers = @{
-        Authorization = "Bearer $apiKey"
-        Accept        = 'application/vnd.github.v3+json'
-        'User-Agent'  = 'DefectDojo-Automation'
-    }
-
-    $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubDependabot'
-    if (-not (Test-Path $downloadRoot)) {
-        New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-    }
+    $context = Get-GitHubContext -Owners $Owners
+    $repos = Get-GitHubRepos -Owners $context.Orgs -Limit $Limit
+    $headers = New-GitHubHeaders -Token $context.ApiKey
+    $downloadRoot = Ensure-DownloadRoot -FolderName 'GitHubDependabot'
 
     $outputFiles = @()
-    $repos = Get-GitHubRepos -Owners $targetOrgs -Limit $Limit
 
     foreach ($repo in $repos) {
-        $orgName = if ($repo.PSObject.Properties['ResolvedOrg']) { $repo.ResolvedOrg } elseif ($repo.owner -and $repo.owner.login) { $repo.owner.login } else { $null }
-        $repoFullName = if ($repo.full_name) { $repo.full_name } elseif ($orgName -and $repo.name) { "{0}/{1}" -f $orgName, $repo.name } else { $repo.name }
-        $repoName = if ($repo.name) { $repo.name } else { $repoFullName }
+        $identity = Get-GitHubRepoIdentity -Repo $repo
+        $repoFullName = $identity.FullName
         Write-Log -Message ("Processing Dependabot alerts for {0}" -f $repoFullName) -Level 'INFO'
 
-        $uri = "{0}/repos/{1}/dependabot/alerts?state=open&per_page={2}" -f $baseUrl, $repoFullName, $Limit
-        $repoAlerts = @()
-
-        while ($uri) {
-            try {
-                $response = Invoke-WebRequest -Method Get -Uri $uri -Headers $headers -UseBasicParsing
-                $alerts = $response.Content | ConvertFrom-Json
-                $parsedAlerts = @($alerts)
-                if ($parsedAlerts.Count -gt 0) {
-                    $repoAlerts += $parsedAlerts
-                }
-
-                $uri = Get-GitHubNextPageUri -LinkHeader $response.Headers['Link']
-            }
-            catch {
-                Write-Log -Message ("Failed to retrieve Dependabot alerts for {0}: {1}" -f $repoFullName, $_) -Level 'ERROR'
-                $uri = $null
-            }
+        $uri = "{0}/repos/{1}/dependabot/alerts?state=open&per_page={2}" -f $context.BaseUrl, $repoFullName, $Limit
+        try {
+            $repoAlerts = Invoke-GitHubPagedJson -InitialUri $uri -Headers $headers
+        }
+        catch {
+            Write-Log -Message ("Failed to retrieve Dependabot alerts for {0}: {1}" -f $repoFullName, $_) -Level 'ERROR'
+            continue
         }
 
         if ($repoAlerts.Count -eq 0) {
@@ -411,7 +485,8 @@ function GitHub-DependabotDownload {
             continue
         }
 
-        $fileName = if ($orgName) { "{0}-{1}-dependabot.json" -f $orgName, $repoName } else { "{0}-dependabot.json" -f $repoName }
+        $repoName = if ($identity.RepoName) { $identity.RepoName } else { $repoFullName }
+        $fileName = if ($identity.OrgName) { "{0}-{1}-dependabot.json" -f $identity.OrgName, $repoName } else { "{0}-dependabot.json" -f $repoName }
         $outFile = Join-Path $downloadRoot $fileName
         $repoAlerts | ConvertTo-Json -Depth 6 | Out-File -FilePath $outFile -Encoding UTF8
         Write-Log -Message ("Saved {0} Dependabot alerts to {1}" -f $repoAlerts.Count, $outFile) -Level 'INFO'
@@ -426,6 +501,6 @@ function GitHub-DependabotDownload {
 
 #GitHub-CodeQLDownload -Owners 'BAMTech-MyVector' -Limit 10
 
-#GitHub-SecretScanDownload -Owners 'BAMTech-MyVector' -Limit 50
+#GitHub-SecretScanDownload -Owners 'BAMTech-SBIR-DTK' -Limit 50
 
 #GitHub-DependabotDownload -Owners 'BAMTech-SBIR-DTK' -Limit 50
