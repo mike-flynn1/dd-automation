@@ -203,34 +203,40 @@ function Get-GitHubRepos {
         [int]$Limit = 200
     )
 
-    $context = Get-GitHubContext -Owners $Owners
-    $config = $context.Config
+    $context    = Get-GitHubContext -Owners $Owners
+    $config     = $context.Config
     $targetOrgs = $context.Orgs
-    $baseUrl = $context.BaseUrl
-    $headers = New-GitHubHeaders -Token $context.ApiKey
+    $headers    = New-GitHubHeaders -Token $context.ApiKey
 
     $allRepos = @()
     foreach ($org in $targetOrgs) {
         $trimmedOrg = $org.Trim()
         if ([string]::IsNullOrWhiteSpace($trimmedOrg)) { continue }
 
-        $uri = "{0}/orgs/{1}/repos?per_page={2}" -f $baseUrl, $trimmedOrg, $Limit
+        $perPage = if ($Limit -and $Limit -gt 0) { [math]::Min($Limit, 100) } else { 100 }
+        $uri = "{0}/orgs/{1}/repos?per_page={2}" -f $context.BaseUrl, $trimmedOrg, $perPage
+
         Write-Log -Message ("Retrieving GitHub repositories for organization {0}" -f $trimmedOrg) -Level 'INFO'
         try {
-            $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -UseBasicParsing
-            Write-Log -Message ("Retrieved {0} repositories for organization {1}" -f $response.Count, $trimmedOrg) -Level 'INFO'
-            foreach ($repo in $response) {
-                if (-not $repo.PSObject.Properties['ResolvedOrg']) {
-                    $repo | Add-Member -NotePropertyName ResolvedOrg -NotePropertyValue $trimmedOrg -Force
-                } else {
-                    $repo.ResolvedOrg = $trimmedOrg
-                }
-                $allRepos += $repo
-            }
+            $repos = Invoke-GitHubPagedJson -InitialUri $uri -Headers $headers
         }
         catch {
             Write-Log -Message ("Failed to retrieve repositories for organization {0}: {1}" -f $trimmedOrg, $_) -Level 'ERROR'
             throw
+        }
+
+        if ($Limit -and $Limit -gt 0 -and $repos.Count -gt $Limit) {
+            $repos = $repos[0..($Limit - 1)]
+        }
+
+        foreach ($repo in $repos) {
+            if (-not $repo.PSObject.Properties['ResolvedOrg']) {
+                $repo | Add-Member -NotePropertyName ResolvedOrg -NotePropertyValue $trimmedOrg -Force
+            }
+            else {
+                $repo.ResolvedOrg = $trimmedOrg
+            }
+            $allRepos += $repo
         }
     }
 
