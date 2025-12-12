@@ -5,7 +5,9 @@
         SonarQube   = $false
         BurpSuite   = $false
         DefectDojo  = $false
-        GitHub      = $true
+        GitHubCodeQL = $true
+        GitHubSecret = $true
+        GitHubDependabot = $true
     }
 
     # File paths for tools requiring local inputs
