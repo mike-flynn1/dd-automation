@@ -956,7 +956,7 @@ function Process-GitHubDependabot {
             $uploadErrors = 0
             foreach ($file in $dependabotFiles) {
                 try {
-                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTest.Id -ScanType 'Universal Parser - GitHub Dependabot Alerts'
+                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTest.Id -ScanType 'Universal Parser - GitHub Dependabot Aert5s'
                     Write-GuiMessage "Uploaded Dependabot JSON: $([System.IO.Path]::GetFileName($file)) to test $($dependabotTest.Name)"
                 } catch {
                     $uploadErrors++
