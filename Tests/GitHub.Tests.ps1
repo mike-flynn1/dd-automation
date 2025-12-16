@@ -55,19 +55,19 @@ Describe 'Get-GitHubRepos' {
             }
         }
         Mock Get-Config { return $config }
-        Mock Invoke-RestMethod {
+        Mock Invoke-GitHubPagedJson {
             @(
                 [pscustomobject]@{ name = 'active'; archived = $false; full_name = 'OrgOne/active' },
                 [pscustomobject]@{ name = 'archived'; archived = $true; full_name = 'OrgOne/archived' }
             )
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=100' }
 
         $repos = Get-GitHubRepos
 
         $repos.Count | Should -Be 1
         $repos[0].name | Should -Be 'active'
         $repos[0].ResolvedOrg | Should -Be 'OrgOne'
-        Assert-MockCalled Invoke-RestMethod -Times 1 -ParameterFilter { $Uri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=200' }
+        Assert-MockCalled Invoke-GitHubPagedJson -Times 1 -ParameterFilter { $InitialUri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=100' }
     }
 
     It 'Keeps archived repositories when SkipArchivedRepos is false' {
@@ -82,12 +82,12 @@ Describe 'Get-GitHubRepos' {
             }
         }
         Mock Get-Config { return $config }
-        Mock Invoke-RestMethod {
+        Mock Invoke-GitHubPagedJson {
             @(
                 [pscustomobject]@{ name = 'active'; archived = $false; full_name = 'OrgOne/active' },
                 [pscustomobject]@{ name = 'archive-me'; archived = $true; full_name = 'OrgOne/archive-me' }
             )
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=100' }
 
         $repos = Get-GitHubRepos
 
@@ -108,13 +108,13 @@ Describe 'Get-GitHubRepos' {
             }
         }
         Mock Get-Config { return $config }
-        Mock Invoke-RestMethod {
+        Mock Invoke-GitHubPagedJson {
             @(
                 [pscustomobject]@{ name = 'app-main'; archived = $false; full_name = 'OrgOne/app-main' },
                 [pscustomobject]@{ name = 'app-old'; archived = $false; full_name = 'OrgOne/app-old' },
                 [pscustomobject]@{ name = 'toolkit'; archived = $false; full_name = 'OrgOne/toolkit' }
             )
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=100' }
 
         $repos = Get-GitHubRepos
 
@@ -133,14 +133,14 @@ Describe 'Get-GitHubRepos' {
             }
         }
         Mock Get-Config { return $config }
-        Mock Invoke-RestMethod {
+        Mock Invoke-GitHubPagedJson {
             @([pscustomobject]@{ name = 'app'; archived = $false; full_name = 'OrgOne/app' })
-        } -ParameterFilter { $Uri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=50' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=50' }
 
         $repos = Get-GitHubRepos -Owners @('OrgOne','  ') -Limit 50
 
         $repos.Count | Should -Be 1
-        Assert-MockCalled Invoke-RestMethod -Times 1 -ParameterFilter { $Uri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=50' }
+        Assert-MockCalled Invoke-GitHubPagedJson -Times 1 -ParameterFilter { $InitialUri -eq 'https://api.github.test/orgs/OrgOne/repos?per_page=50' }
     }
 }
 

@@ -135,16 +135,19 @@ function Invoke-GitHubPagedJson {
         [hashtable]$Headers
     )
 
-    $items = @()
+    $items = [System.Collections.Generic.List[psobject]]::new()
     $nextUri = $InitialUri
     while ($nextUri) {
         $response = Invoke-WebRequest -Method Get -Uri $nextUri -Headers $Headers -UseBasicParsing
         $pageItems = $response.Content | ConvertFrom-Json
         if ($null -ne $pageItems) {
             if ($pageItems -is [System.Collections.IEnumerable] -and -not ($pageItems -is [string])) {
-                $items += @($pageItems)
-            } else {
-                $items += $pageItems
+                foreach ($page in $pageItems) {
+                    $items.Add($page)
+                }
+            }
+            else {
+                $items.Add($pageItems)
             }
         }
         $nextUri = Get-GitHubNextPageUri -LinkHeader $response.Headers['Link']
