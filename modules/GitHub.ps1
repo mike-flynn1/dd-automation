@@ -85,6 +85,8 @@ function Get-GitHubRepoIdentity {
     <#
     .SYNOPSIS
         Derives org, name, and full-name values for a GitHub repository object.
+    .PARAMETER Repo
+        The GitHub repository object to extract identity information from.
     #>
     param(
         [Parameter(Mandatory=$true)]
