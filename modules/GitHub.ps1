@@ -460,7 +460,7 @@ function GitHub-DependabotDownload {
     .PARAMETER Limit
         Page size used for repository listing and alerts pagination; defaults to 100 per GitHub API call.
     .OUTPUTS
-        string containing full paths to the JSON files saved under %TEMP%\GitHubDependabot.
+        string containing full paths to the JSON files saved under %TEMP%\GitHubDependabot. Returns an empty array when no alerts are found for any repository.
     #>
     [CmdletBinding()]
     param(
