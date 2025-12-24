@@ -472,4 +472,29 @@ Describe 'GitHub-DependabotDownload' {
         $logContent = Get-Content $script:TestLogFile
         ($logContent | Select-String -Pattern 'No open Dependabot alerts').Matches.Count | Should -BeGreaterThan 0
     }
+
+    It 'Logs an error when Dependabot alert retrieval fails' {
+        $env:GITHUB_PAT = 'token'
+        $config = @{
+            GitHub = @{
+                Orgs = @('OrgOne')
+            }
+            ApiBaseUrls = @{
+                GitHub = 'https://api.github.test'
+            }
+        }
+        Mock Get-Config { return $config }
+        Mock Get-GitHubRepos {
+            @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
+        }
+        Mock Invoke-GitHubPagedJson {
+            throw (New-Object System.Exception 'REST failure')
+        } -ParameterFilter { $InitialUri -like '*dependabot/alerts*' }
+        Mock Write-Error {}  # swallow non-terminating error so Pester treats test as pass
+
+        { GitHub-DependabotDownload } | Should -Not -Throw
+
+        $logContent = Get-Content $script:TestLogFile
+        ($logContent | Select-String -Pattern 'Failed to retrieve Dependabot alerts').Matches.Count | Should -BeGreaterThan 0
+    }
 }
