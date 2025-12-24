@@ -467,7 +467,7 @@ function GitHub-DependabotDownload {
         [Parameter(Mandatory=$false)]
         [string[]]$Owners,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 100
+        [int]$Limit = 200
     )
 
     $context = Get-GitHubContext -Owners $Owners
