@@ -458,7 +458,7 @@ function GitHub-DependabotDownload {
     .PARAMETER Owners
         Optional override list of org names; defaults to GitHub.Orgs from config when not supplied.
     .PARAMETER Limit
-        Page size used for repository listing and alerts pagination; defaults to 100 per GitHub API call.
+        Maximum number of repositories to process; also used as the per_page value when requesting Dependabot alerts (GitHub caps this at 100 items per page).
     .OUTPUTS
         string containing full paths to the JSON files saved under %TEMP%\GitHubDependabot. Returns an empty array when no alerts are found for any repository.
     #>
