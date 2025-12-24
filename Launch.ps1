@@ -47,6 +47,12 @@ $scriptDir = $PSScriptRoot
 Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomationLauncher_Renewed.log' -Overwrite
 Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
 
+$script:gitHubFeatureMap = [ordered]@{
+    GitHubCodeQL         = 'CodeQL'
+    GitHubSecretScanning = 'SecretScanning'
+    GitHubDependabot     = 'Dependabot'
+}
+
 # Add Windows Forms types for GUI
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -76,6 +82,43 @@ function Write-GuiMessage {
     $script:lstStatus.TopIndex = $script:lstStatus.Items.Count - 1
 }
 
+function Get-GitHubFeatureState {
+    param(
+        [hashtable]$Config,
+        [string]$ToolKey
+    )
+
+    if (-not $Config -or -not $Config.ContainsKey('Tools')) { return $false }
+    if (-not $script:gitHubFeatureMap.Contains($ToolKey)) { return $false }
+
+    $tools = $Config.Tools
+    if (-not $tools.ContainsKey('GitHub') -or $tools.GitHub -isnot [hashtable]) { return $false }
+
+    $featureName = $script:gitHubFeatureMap[$ToolKey]
+    if (-not $tools.GitHub.ContainsKey($featureName)) { return $false }
+
+    return [bool]$tools.GitHub[$featureName]
+}
+
+function Set-GitHubFeatureState {
+    param(
+        [hashtable]$Config,
+        [string]$ToolKey,
+        [bool]$Value
+    )
+
+    if (-not $Config.ContainsKey('Tools') -or $Config.Tools -isnot [hashtable]) {
+        $Config.Tools = @{}
+    }
+    if (-not $Config.Tools.ContainsKey('GitHub') -or $Config.Tools.GitHub -isnot [hashtable]) {
+        $Config.Tools.GitHub = @{}
+    }
+    if (-not $script:gitHubFeatureMap.Contains($ToolKey)) { return }
+
+    $featureName = $script:gitHubFeatureMap[$ToolKey]
+    $Config.Tools.GitHub[$featureName] = $Value
+}
+
 #endregion GUI Helper Functions
 
 #region GUI Creation
@@ -84,19 +127,20 @@ function Initialize-GuiElements {
     # Script-level scope allows these variables to be accessed by event handlers
     $script:form = New-Object System.Windows.Forms.Form
     $script:chkBoxes = @{}
-    $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo','GitHub')
+    $script:gitHubToolKeys = [string[]]$script:gitHubFeatureMap.Keys
+    $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo') + $script:gitHubToolKeys
 
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(620, 790)
+    $form.Size = New-Object System.Drawing.Size(640, 820)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
     # Tools GroupBox
     $grpTools = New-Object System.Windows.Forms.GroupBox
     $grpTools.Text = 'Select Tools'
-    $grpTools.Size = New-Object System.Drawing.Size(580, 100)
+    $grpTools.Size = New-Object System.Drawing.Size(600, 130)
     $grpTools.Location = New-Object System.Drawing.Point(10, 10)
     $form.Controls.Add($grpTools)
 
@@ -104,14 +148,16 @@ function Initialize-GuiElements {
     $script:toolTip = New-Object System.Windows.Forms.ToolTip
     $script:toolTip.ShowAlways = $true
 
-    # Tool Checkboxes
+    # Tool Checkboxes (uniform spacing even with longer labels)
+    $columnCount = 3
+    $columnWidth = 180
     for ($i = 0; $i -lt $tools.Count; $i++) {
         $name = $tools[$i]
         $chk = New-Object System.Windows.Forms.CheckBox
         $chk.Text = $name
         $chk.AutoSize = $true
-        $x = 10 + ($i % 3) * 140 # 3 checkboxes per row
-        $y = 20 + [Math]::Floor($i / 3) * 30 # Move to next row after 3 checkboxes
+        $x = 10 + ($i % $columnCount) * $columnWidth
+        $y = 20 + [Math]::Floor($i / $columnCount) * 30
         $chk.Location = New-Object System.Drawing.Point($x, $y)
         $chk.Checked = $true
         $grpTools.Controls.Add($chk)
@@ -123,25 +169,36 @@ function Initialize-GuiElements {
             'SonarQube' { $script:toolTip.SetToolTip($chk, "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo") }
             'BurpSuite' { $script:toolTip.SetToolTip($chk, "Scans the specified folder for BurpSuite XML reports and uploads them to DefectDojo.") }
             'DefectDojo' { $script:toolTip.SetToolTip($chk, "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload.") }
-            'GitHub' { $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports and Secret Scanning JSON files, uploads to DefectDojo (if checked) to individual tests within the specified engagement.") }
+            'GitHubCodeQL' {
+                $chk.Text = 'GitHub CodeQL'
+                $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports, optionally upload to DefectDojo.")
+            }
+            'GitHubSecretScanning' {
+                $chk.Text = 'GitHub Secret Scanning'
+                $script:toolTip.SetToolTip($chk, "Download GitHub Secret Scanning JSON alerts, optionally upload to DefectDojo.")
+            }
+            'GitHubDependabot' {
+                $chk.Text = 'GitHub Dependabot'
+                $script:toolTip.SetToolTip($chk, "Download GitHub Dependabot alerts JSON and upload to DefectDojo when configured.")
+            }
         }
     }
 
     # BurpSuite Controls
-    $lblBurp = New-Object System.Windows.Forms.Label -Property @{ Text = 'BurpSuite XML Folder:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 120) }
-    $script:txtBurp = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(370, 20); Location = New-Object System.Drawing.Point(150, 118) }
-    $script:btnBrowse = New-Object System.Windows.Forms.Button -Property @{ Text = 'Browse...'; Location = New-Object System.Drawing.Point(520, 115); Size = New-Object System.Drawing.Size(80, 24) }
+    $lblBurp = New-Object System.Windows.Forms.Label -Property @{ Text = 'BurpSuite XML Folder:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 150) }
+    $script:txtBurp = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(370, 20); Location = New-Object System.Drawing.Point(150, 148) }
+    $script:btnBrowse = New-Object System.Windows.Forms.Button -Property @{ Text = 'Browse...'; Location = New-Object System.Drawing.Point(540, 145); Size = New-Object System.Drawing.Size(80, 24) }
     $form.Controls.AddRange(@($lblBurp, $txtBurp, $btnBrowse))
 
     # TenableWAS Controls
-    $lblTenable = New-Object System.Windows.Forms.Label -Property @{ Text = 'TenableWAS Scan ID:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 180) }
-    $script:txtTenable = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(370, 20); Location = New-Object System.Drawing.Point(150, 178) }
+    $lblTenable = New-Object System.Windows.Forms.Label -Property @{ Text = 'TenableWAS Scan ID:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 210) }
+    $script:txtTenable = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(330, 20); Location = New-Object System.Drawing.Point(150, 208) }
     $form.Controls.AddRange(@($lblTenable, $txtTenable))
 
     # GitHub organization controls
-    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 210) }
+    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 240) }
     $script:txtGitHubOrgs = New-Object System.Windows.Forms.TextBox -Property @{
-        Location = New-Object System.Drawing.Point(150, 208)
+        Location = New-Object System.Drawing.Point(150, 238)
         Size     = New-Object System.Drawing.Size(330, 20)
         Enabled  = $true
     }
@@ -150,13 +207,14 @@ function Initialize-GuiElements {
 
     # DefectDojo Controls
     $ddControls = @{
-        lblDDProduct      = [Tuple]::Create('DefectDojo Product:', 240)
-        lblDDEng          = [Tuple]::Create('Engagement:', 270)
-        lblDDApiScan      = [Tuple]::Create('API Scan Config:', 300)
-        lblDDTestTenable  = [Tuple]::Create('TenableWAS Test:', 330)
-        lblDDTestSonar    = [Tuple]::Create('SonarQube Test:', 360)
-        lblDDTestBurp     = [Tuple]::Create('BurpSuite Test:', 390)
-        lblDDSeverity     = [Tuple]::Create('Minimum Severity:', 420)
+        lblDDProduct            = [Tuple]::Create('DefectDojo Product:', 270)
+        lblDDEng                = [Tuple]::Create('Engagement:', 300)
+        lblDDApiScan            = [Tuple]::Create('API Scan Config:', 330)
+        lblDDTestTenable        = [Tuple]::Create('TenableWAS Test:', 360)
+        lblDDTestSonar          = [Tuple]::Create('SonarQube Test:', 390)
+        lblDDTestBurp           = [Tuple]::Create('BurpSuite Test:', 420)
+        lblDDTestDependabot     = [Tuple]::Create('Dependabot Test:', 450)
+        lblDDSeverity           = [Tuple]::Create('Minimum Severity:', 480)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -172,7 +230,7 @@ function Initialize-GuiElements {
     $grpManualTool = New-Object System.Windows.Forms.GroupBox
     $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
     $grpManualTool.Size = New-Object System.Drawing.Size(580, 80)
-    $grpManualTool.Location = New-Object System.Drawing.Point(10, 455)
+    $grpManualTool.Location = New-Object System.Drawing.Point(10, 500)
     $form.Controls.Add($grpManualTool)
 
     # Launch DefectDojo CLI Button
@@ -193,17 +251,17 @@ function Initialize-GuiElements {
     $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
 
     # Status ListBox (moved down to accommodate new group)
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(580, 130); Location = New-Object System.Drawing.Point(10, 545) }
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 585) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
-    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(420, 685); Size = New-Object System.Drawing.Size(80, 30) }
-    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(520, 685); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 715); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 715); Size = New-Object System.Drawing.Size(80, 30) }
     
     # Add completion message label
     $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
         Text = ""; 
-        Location = New-Object System.Drawing.Point(10, 720); 
+        Location = New-Object System.Drawing.Point(10, 750); 
         Size = New-Object System.Drawing.Size(400, 25);
         Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
         ForeColor = [System.Drawing.Color]::Green;
@@ -229,10 +287,11 @@ function Register-EventHandlers {
         $script:cmbDDTestSonar.Enabled = $this.Checked -and $script:cmbDDTestSonar.Items.Count -gt 0
         $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
     })
-    $chkBoxes['GitHub'].Add_CheckedChanged({
-        # GitHub will use the selected engagement, no separate test selection needed
-        $script:txtGitHubOrgs.Enabled = $this.Checked
-    })
+    foreach ($key in $script:gitHubToolKeys) {
+        $chkBoxes[$key].Add_CheckedChanged({
+            Update-GitHubControlState
+        })
+    }
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
     })
@@ -256,6 +315,21 @@ function Register-EventHandlers {
     $btnLaunch.Add_Click({ Invoke-Automation })
     $btnCancel.Text = "Close"  # Rename to "Close" for clarity
     $btnCancel.Add_Click({ $script:form.Close() })
+
+    Update-GitHubControlState
+}
+
+function Update-GitHubControlState {
+    $anyGitHub = $false
+    foreach ($key in $script:gitHubToolKeys) {
+        if ($script:chkBoxes.ContainsKey($key) -and $script:chkBoxes[$key].Checked) {
+            $anyGitHub = $true
+            break
+        }
+    }
+
+    $script:txtGitHubOrgs.Enabled = $anyGitHub
+    $script:cmbDDTestDependabot.Enabled = $script:chkBoxes['GitHubDependabot'].Checked -and $script:cmbDDTestDependabot.Items.Count -gt 0
 }
 
 function Handle-ProductChange {
@@ -288,7 +362,7 @@ function Handle-EngagementChange {
     Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
     try {
         $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
-        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp)) {
+        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestDependabot)) {
             $cmb.Items.Clear()
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
@@ -299,11 +373,14 @@ function Handle-EngagementChange {
         $script:cmbDDTestTenable.DisplayMember = 'Title'   # Show test title for TenableWAS
         $script:cmbDDTestSonar.DisplayMember = 'Title'     # Show test type title for SonarQube
         $script:cmbDDTestBurp.DisplayMember = 'Title'      # Show test type title for BurpSuite
+        $script:cmbDDTestDependabot.DisplayMember = 'Title'
 
         # Re-evaluate enabled state based on tool selection and if tests were found
         $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
         $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
+        $script:cmbDDTestDependabot.Enabled = $script:chkBoxes['GitHubDependabot'].Checked -and $tests.Count -gt 0
+        Update-GitHubControlState
         if (-not $tests) {
             Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
         }
@@ -426,13 +503,17 @@ function Prepopulate-FormFromConfig {
 
     Write-GuiMessage "Loading settings from config file..."
     foreach ($tool in $script:tools) {
-        if ($Config.Tools.ContainsKey($tool)) {
+        if ($script:gitHubFeatureMap.Contains($tool)) {
+            $script:chkBoxes[$tool].Checked = Get-GitHubFeatureState -Config $Config -ToolKey $tool
+        }
+        elseif ($Config.Tools.ContainsKey($tool)) {
             $script:chkBoxes[$tool].Checked = [bool]$Config.Tools[$tool]
         }
+        else {
+            $Config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+        }
     }
-    if ($Config.Tools.ContainsKey('GitHub')) {
-        $script:txtGitHubOrgs.Enabled = [bool]$Config.Tools['GitHub']
-    }
+    Update-GitHubControlState
 
     if ($Config.TenableWASScanId ) {
         $script:txtTenable.Text = $Config.TenableWASScanId
@@ -489,6 +570,10 @@ function Prepopulate-FormFromConfig {
                             $selectedBurpTest = $script:cmbDDTestBurp.Items | Where-Object { $_.Id -eq $Config.DefectDojo.BurpSuiteTestId }
                             if ($selectedBurpTest) { $script:cmbDDTestBurp.SelectedItem = $selectedBurpTest }
                         }
+                        if ($Config.DefectDojo.GitHubDependabotTestId) {
+                            $selectedDependabotTest = $script:cmbDDTestDependabot.Items | Where-Object { $_.Id -eq $Config.DefectDojo.GitHubDependabotTestId }
+                            if ($selectedDependabotTest) { $script:cmbDDTestDependabot.SelectedItem = $selectedDependabotTest }
+                        }
                     }
                 }
             }
@@ -528,7 +613,12 @@ function Invoke-Automation {
 
         # Update config from GUI selections
         foreach ($tool in $script:tools) {
-            $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+            if ($script:gitHubFeatureMap.Contains($tool)) {
+                Set-GitHubFeatureState -Config $config -ToolKey $tool -Value $script:chkBoxes[$tool].Checked
+            }
+            else {
+                $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+            }
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
         if ($script:txtTenable.Text) { $config.TenableWASScanId = $script:txtTenable.Text }
@@ -567,7 +657,20 @@ function Invoke-Automation {
             }
         }
 
-        Write-GuiMessage "Selected Tools: $(($script:tools | Where-Object { $config.Tools[$_] }) -join ', ')"
+        $selectedToolLabels = @()
+        foreach ($tool in $script:tools) {
+            $isEnabled = $false
+            if ($script:gitHubFeatureMap.Contains($tool)) {
+                $isEnabled = Get-GitHubFeatureState -Config $config -ToolKey $tool
+            }
+            elseif ($config.Tools.ContainsKey($tool)) {
+                $isEnabled = [bool]$config.Tools[$tool]
+            }
+            if ($isEnabled) {
+                $selectedToolLabels += $script:chkBoxes[$tool].Text
+            }
+        }
+        Write-GuiMessage "Selected Tools: $($selectedToolLabels -join ', ')"
 
         # Process TenableWAS
         if ($config.Tools.TenableWAS) {
@@ -585,13 +688,18 @@ function Invoke-Automation {
         }
 
         # Process GitHub CodeQL
-        if ($config.Tools.GitHub) {
+        if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubCodeQL') {
             Process-GitHubCodeQL -Config $config
         }
 
         # Process GitHub Secret Scanning
-        if ($config.Tools.GitHub) {
+        if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubSecretScanning') {
             Process-GitHubSecretScanning -Config $config
+        }
+
+        # Process GitHub Dependabot alerts
+        if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubDependabot') {
+            Process-GitHubDependabot -Config $config
         }
 
         # Save DefectDojo selections back to config
@@ -803,7 +911,14 @@ function Process-GitHubSecretScanning {
     param([hashtable]$Config)
     Write-GuiMessage "Starting GitHub Secret Scanning download..."
     try {
-        GitHub-SecretScanDownload -Owner $Config.GitHub.org
+        $orgs = @($Config.GitHub.Orgs)
+        if (-not $orgs -or $orgs.Count -eq 0) {
+            Write-GuiMessage 'No GitHub organizations configured. Skipping GitHub Secret Scanning.' 'WARNING'
+            return
+        }
+
+        Write-GuiMessage ("Processing GitHub organizations for secret scanning: {0}" -f ($orgs -join ', '))
+        GitHub-SecretScanDownload -Owners $orgs
         Write-GuiMessage "GitHub Secret Scanning download completed."
 
         if ($Config.Tools.DefectDojo) {
@@ -878,6 +993,62 @@ function Process-GitHubSecretScanning {
     }
 }
 
+function Process-GitHubDependabot {
+    param([hashtable]$Config)
+    Write-GuiMessage "Starting GitHub Dependabot download..."
+    try {
+        $orgs = @($Config.GitHub.Orgs)
+        if (-not $orgs -or $orgs.Count -eq 0) {
+            Write-GuiMessage 'No GitHub organizations configured. Skipping Dependabot export.' 'WARNING'
+            return
+        }
+
+        Write-GuiMessage ("Processing GitHub organizations for Dependabot: {0}" -f ($orgs -join ', '))
+        $dependabotFiles = GitHub-DependabotDownload -Owners $orgs
+        Write-GuiMessage "GitHub Dependabot download completed."
+
+        if (-not $dependabotFiles -or $dependabotFiles.Count -eq 0) {
+            Write-GuiMessage 'No open Dependabot alerts downloaded; skipping uploads.'
+            return
+        }
+
+        if ($Config.Tools.DefectDojo) {
+            Write-GuiMessage "Uploading GitHub Dependabot JSON files to DefectDojo..."
+            $dependabotTest = $script:cmbDDTestDependabot.SelectedItem
+            if (-not $dependabotTest) {
+                Write-GuiMessage 'No DefectDojo Dependabot test selected; skipping uploads.' 'WARNING'
+                return
+            }
+
+            $uploadErrors = 0
+            foreach ($file in $dependabotFiles) {
+                try {
+                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTest.Id -ScanType 'Universal Parser - GitHub Dependabot Aert5s'
+                    Write-GuiMessage "Uploaded Dependabot JSON: $([System.IO.Path]::GetFileName($file)) to test $($dependabotTest.Name)"
+                } catch {
+                    $uploadErrors++
+                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
+                }
+            }
+
+            if ($uploadErrors -eq 0) {
+                Write-GuiMessage "GitHub Dependabot JSON files uploaded successfully to $($dependabotTest.Name)"
+                $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubDependabot'
+                try {
+                    Remove-Item -Path $downloadRoot -Recurse -Force
+                    Write-GuiMessage "GitHub Dependabot download directory cleaned up successfully"
+                } catch {
+                    Write-GuiMessage "Failed to clean up Dependabot download directory: $_" 'WARNING'
+                }
+            } else {
+                Write-GuiMessage "Dependabot uploads completed with $uploadErrors error(s); downloaded files retained for review." 'WARNING'
+            }
+        }
+    } catch {
+        Write-GuiMessage "GitHub Dependabot processing failed: $_" 'ERROR'
+    }
+}
+
 function Save-DefectDojoConfig {
     param([hashtable]$Config)
 
@@ -888,8 +1059,11 @@ function Save-DefectDojoConfig {
         TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
         SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
         BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
+        GitHubDependabotTest = $script:cmbDDTestDependabot.SelectedItem
         MinimumSeverity = $script:cmbDDSeverity.SelectedItem
     }
+
+    $dependabotEnabled = Get-GitHubFeatureState -Config $Config -ToolKey 'GitHubDependabot'
 
     # Validate that all necessary selections have been made
     $incomplete = $false
@@ -897,6 +1071,7 @@ function Save-DefectDojoConfig {
     if ($Config.Tools.TenableWAS -and -not $selections.TenableWASTest) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
     if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
+    if ($dependabotEnabled -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
 
     if ($incomplete) {
         Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
@@ -911,6 +1086,7 @@ function Save-DefectDojoConfig {
         TenableWASTestId  = $selections.TenableWASTest.Id
         SonarQubeTestId   = $selections.SonarQubeTest.Id
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
+        GitHubDependabotTestId = $selections.GitHubDependabotTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
     }
 
