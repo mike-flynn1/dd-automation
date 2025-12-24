@@ -443,7 +443,7 @@ Describe 'GitHub-DependabotDownload' {
 
         $downloadRoot = Join-Path $TestDrive 'GitHubDependabot'
         $jsonFiles = @(Get-ChildItem -Path $downloadRoot -Filter '*-dependabot.json' -Recurse | Select-Object -ExpandProperty FullName)
-            $jsonFiles.Count | Should -Be 1
+        $jsonFiles.Count | Should -Be 1
         $jsonPath = $jsonFiles[0].Trim()
         $records = Get-Content -Raw -Path $jsonPath | ConvertFrom-Json
         $records.Count | Should -Be 1
