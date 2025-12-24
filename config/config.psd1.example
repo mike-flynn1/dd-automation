@@ -1,13 +1,15 @@
 @{
     # Tools enable/disable flags
     Tools = @{
-        TenableWAS  = $true
-        SonarQube   = $false
-        BurpSuite   = $false
-        DefectDojo  = $false
-        GitHubCodeQL = $true
-        GitHubSecret = $true
-        GitHubDependabot = $true
+        TenableWAS = $true
+        SonarQube  = $false
+        BurpSuite  = $false
+        DefectDojo = $false
+        GitHub = @{
+            CodeQL = $true
+            SecretScanning = $true
+            Dependabot = $true
+        }
     }
 
     # File paths for tools requiring local inputs

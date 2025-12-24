@@ -47,6 +47,12 @@ $scriptDir = $PSScriptRoot
 Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomationLauncher_Renewed.log' -Overwrite
 Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
 
+$script:gitHubFeatureMap = [ordered]@{
+    GitHubCodeQL         = 'CodeQL'
+    GitHubSecretScanning = 'SecretScanning'
+    GitHubDependabot     = 'Dependabot'
+}
+
 # Add Windows Forms types for GUI
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -76,6 +82,43 @@ function Write-GuiMessage {
     $script:lstStatus.TopIndex = $script:lstStatus.Items.Count - 1
 }
 
+function Get-GitHubFeatureState {
+    param(
+        [hashtable]$Config,
+        [string]$ToolKey
+    )
+
+    if (-not $Config -or -not $Config.ContainsKey('Tools')) { return $false }
+    if (-not $script:gitHubFeatureMap.Contains($ToolKey)) { return $false }
+
+    $tools = $Config.Tools
+    if (-not $tools.ContainsKey('GitHub') -or $tools.GitHub -isnot [hashtable]) { return $false }
+
+    $featureName = $script:gitHubFeatureMap[$ToolKey]
+    if (-not $tools.GitHub.ContainsKey($featureName)) { return $false }
+
+    return [bool]$tools.GitHub[$featureName]
+}
+
+function Set-GitHubFeatureState {
+    param(
+        [hashtable]$Config,
+        [string]$ToolKey,
+        [bool]$Value
+    )
+
+    if (-not $Config.ContainsKey('Tools') -or $Config.Tools -isnot [hashtable]) {
+        $Config.Tools = @{}
+    }
+    if (-not $Config.Tools.ContainsKey('GitHub') -or $Config.Tools.GitHub -isnot [hashtable]) {
+        $Config.Tools.GitHub = @{}
+    }
+    if (-not $script:gitHubFeatureMap.Contains($ToolKey)) { return }
+
+    $featureName = $script:gitHubFeatureMap[$ToolKey]
+    $Config.Tools.GitHub[$featureName] = $Value
+}
+
 #endregion GUI Helper Functions
 
 #region GUI Creation
@@ -84,7 +127,7 @@ function Initialize-GuiElements {
     # Script-level scope allows these variables to be accessed by event handlers
     $script:form = New-Object System.Windows.Forms.Form
     $script:chkBoxes = @{}
-    $script:gitHubToolKeys = @('GitHubCodeQL','GitHubSecret','GitHubDependabot')
+    $script:gitHubToolKeys = [string[]]$script:gitHubFeatureMap.Keys
     $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo') + $script:gitHubToolKeys
 
     # Form settings
@@ -130,7 +173,7 @@ function Initialize-GuiElements {
                 $chk.Text = 'GitHub CodeQL'
                 $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports, optionally upload to DefectDojo.")
             }
-            'GitHubSecret' {
+            'GitHubSecretScanning' {
                 $chk.Text = 'GitHub Secret Scanning'
                 $script:toolTip.SetToolTip($chk, "Download GitHub Secret Scanning JSON alerts, optionally upload to DefectDojo.")
             }
@@ -460,8 +503,14 @@ function Prepopulate-FormFromConfig {
 
     Write-GuiMessage "Loading settings from config file..."
     foreach ($tool in $script:tools) {
-        if ($Config.Tools.ContainsKey($tool)) {
+        if ($script:gitHubFeatureMap.Contains($tool)) {
+            $script:chkBoxes[$tool].Checked = Get-GitHubFeatureState -Config $Config -ToolKey $tool
+        }
+        elseif ($Config.Tools.ContainsKey($tool)) {
             $script:chkBoxes[$tool].Checked = [bool]$Config.Tools[$tool]
+        }
+        else {
+            $Config.Tools[$tool] = $script:chkBoxes[$tool].Checked
         }
     }
     Update-GitHubControlState
@@ -564,7 +613,12 @@ function Invoke-Automation {
 
         # Update config from GUI selections
         foreach ($tool in $script:tools) {
-            $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+            if ($script:gitHubFeatureMap.Contains($tool)) {
+                Set-GitHubFeatureState -Config $config -ToolKey $tool -Value $script:chkBoxes[$tool].Checked
+            }
+            else {
+                $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+            }
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
         if ($script:txtTenable.Text) { $config.TenableWASScanId = $script:txtTenable.Text }
@@ -603,7 +657,20 @@ function Invoke-Automation {
             }
         }
 
-        Write-GuiMessage "Selected Tools: $(($script:tools | Where-Object { $config.Tools[$_] }) -join ', ')"
+        $selectedToolLabels = @()
+        foreach ($tool in $script:tools) {
+            $isEnabled = $false
+            if ($script:gitHubFeatureMap.Contains($tool)) {
+                $isEnabled = Get-GitHubFeatureState -Config $config -ToolKey $tool
+            }
+            elseif ($config.Tools.ContainsKey($tool)) {
+                $isEnabled = [bool]$config.Tools[$tool]
+            }
+            if ($isEnabled) {
+                $selectedToolLabels += $script:chkBoxes[$tool].Text
+            }
+        }
+        Write-GuiMessage "Selected Tools: $($selectedToolLabels -join ', ')"
 
         # Process TenableWAS
         if ($config.Tools.TenableWAS) {
@@ -621,17 +688,17 @@ function Invoke-Automation {
         }
 
         # Process GitHub CodeQL
-        if ($config.Tools.GitHubCodeQL) {
+        if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubCodeQL') {
             Process-GitHubCodeQL -Config $config
         }
 
         # Process GitHub Secret Scanning
-        if ($config.Tools.GitHubSecret) {
+        if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubSecretScanning') {
             Process-GitHubSecretScanning -Config $config
         }
 
         # Process GitHub Dependabot alerts
-        if ($config.Tools.GitHubDependabot) {
+        if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubDependabot') {
             Process-GitHubDependabot -Config $config
         }
 
@@ -996,13 +1063,15 @@ function Save-DefectDojoConfig {
         MinimumSeverity = $script:cmbDDSeverity.SelectedItem
     }
 
+    $dependabotEnabled = Get-GitHubFeatureState -Config $Config -ToolKey 'GitHubDependabot'
+
     # Validate that all necessary selections have been made
     $incomplete = $false
     if (-not $selections.Product -or -not $selections.Engagement) { $incomplete = $true }
     if ($Config.Tools.TenableWAS -and -not $selections.TenableWASTest) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
     if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
-    if ($Config.Tools.GitHubDependabot -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
+    if ($dependabotEnabled -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
 
     if ($incomplete) {
         Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'

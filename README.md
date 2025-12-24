@@ -6,7 +6,7 @@
  - SonarQube → Defect Dojo (reimport direct from Defect Dojo)
  - GitHub CodeQL SARIF reports → Defect Dojo (Implemented)
  - GitHub Secret Scanning JSON → Defect Dojo (Implemented)
- - GitHub Dependabot → Defect Dojo (not Implemented)
+ - GitHub Dependabot JSON → Defect Dojo (Implemented)
  - BurpSuite XML report parsing → Defect Dojo (Implemented)
 
  The solution is modular, extensible, and designed for easy addition of new tools.
@@ -49,11 +49,28 @@
 ### PowerShell Config
 An example configuration file is provided at `config/config.psd1.example`. Copy it to `config\config.psd1` and update the values as needed. This file is ignored by Git, allowing personal overrides. 
 
+GitHub feature toggles now live under a nested `Tools.GitHub` block so each capability can be controlled independently:
+
+```powershell
+Tools = @{
+    TenableWAS = $true
+    SonarQube  = $false
+    BurpSuite  = $false
+    DefectDojo = $true
+    GitHub = @{
+        CodeQL         = $true   # Enable GitHub CodeQL SARIF downloads/uploads
+        SecretScanning = $false  # Enable GitHub Secret Scanning downloads/uploads
+        Dependabot     = $false  # Enable GitHub Dependabot alert downloads/uploads
+    }
+}
+```
+
 ### GitHub Configuration
 - Populate `GitHub = @{ Orgs = @('your-org-1','your-org-2') }` in your config file.
 - Supply one organization for single-tenant use or add multiple entries to process each org sequentially when `GitHub` is selected in the GUI.
 - Ensure `GITHUB_PAT` has access to every listed organization (CodeQL/Secret Scanning permissions as required).
 - The launcher exposes a `GitHub Orgs` textbox populated from the config; update the comma-separated list there to override and persist organizations without editing the PSD1 manually.
+- Enable or disable individual GitHub features via `Tools.GitHub.CodeQL`, `.SecretScanning`, and `.Dependabot` as shown above; each checkbox in the GUI maps directly to these nested settings.
 
 #### Repository Filtering
 The GitHub integration supports flexible repository filtering to control which repositories are processed:
@@ -265,18 +282,22 @@ The GitHub integration automatically downloads and processes security findings f
 ### Features
 - **CodeQL SARIF Reports**: Downloads the latest CodeQL code scanning analyses for all repositories in configured organizations
 - **Secret Scanning JSON**: Downloads open secret scanning alerts for all repositories with Secret Scanning enabled
+- **Dependabot Alerts JSON**: Downloads open Dependabot alerts per repository and saves them for optional DefectDojo upload
 
 ### How It Works
-1. When the GitHub checkbox is selected in the GUI, the tool iterates through all repositories in the configured GitHub organization(s)
-2. For each repository:
-   - Downloads the latest CodeQL SARIF report (if CodeQL is enabled and has results)
-   - Downloads open Secret Scanning alerts as JSON (if Secret Scanning is enabled)
-3. Creates separate DefectDojo tests for each scan type with naming convention:
-   - CodeQL tests: `repository-name (CodeQL)`
-   - Secret Scanning tests: `repository-name (Secret Scanning)`
+1. When any GitHub feature checkbox (CodeQL, Secret Scanning, Dependabot) is selected in the GUI, the tool iterates through all repositories in the configured GitHub organization(s)
+2. For each repository, the selected features run independently:
+    - **CodeQL**: Downloads the latest SARIF report per category when analyses contain findings
+    - **Secret Scanning**: Downloads all open secret scanning alerts as JSON when the repository has the feature enabled
+    - **Dependabot**: Downloads all open Dependabot alerts as JSON
+3. Creates separate DefectDojo tests for each scan type with naming conventions:
+    - CodeQL tests: `repository-name (CodeQL)`
+    - Secret Scanning tests: `repository-name (Secret Scanning)`
+    - Dependabot uploads target a user-selected DefectDojo test (no automatic creation)
 4. Files are temporarily stored in system temp directories before upload:
-   - CodeQL: `%TEMP%\GitHubCodeScanning\`
-   - Secret Scanning: `%TEMP%\GitHubSecretScanning\`
+    - CodeQL: `%TEMP%\GitHubCodeScanning\`
+    - Secret Scanning: `%TEMP%\GitHubSecretScanning\`
+    - Dependabot: `%TEMP%\GitHubDependabot\`
 
 ### Configuration
 - Set the `GITHUB_PAT` environment variable with a Personal Access Token that has access to all configured organizations
@@ -284,10 +305,10 @@ The GitHub integration automatically downloads and processes security findings f
 - The tool automatically handles repositories without Advanced Security enabled by logging warnings and skipping
 
 ### Limitations
-- Dependabot integration is not yet implemented (May implement via Dependabot integration with DD)
 - Only processes the latest analysis per CodeQL category
 - Only retrieves open secret scanning alerts (not resolved/closed)
-- Requires GitHub Advanced Security features to be enabled on target repositories
+- Requires GitHub Advanced Security features to be enabled on target repositories for CodeQL/Secret Scanning
+- Dependabot uploads require selecting an existing DefectDojo test in the GUI; automatic creation is not supported
 
 ## BurpSuite Integration
 
