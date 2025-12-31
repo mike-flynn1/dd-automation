@@ -18,8 +18,24 @@
  - PowerShell 7.2 or later
  - Network access to APIs (Defect Dojo, Tenable WAS)
  - Environment variables set for API keys and credentials
- - Pester >5.0 if running tests (no need if not developing)
- - Tool Knowledge 
+ - Pester 5+ (only required for local development; GitHub Actions runs tests automatically)
+
+ ## Continuous Integration
+
+ This project uses **GitHub Actions** to automatically run all Pester tests on every pull request.
+
+ **What happens on PRs**:
+ - All tests in `Tests/` are executed automatically
+ - Test results appear in the PR "Checks" tab
+ - PRs with failing tests are blocked from merging (when branch protection is configured, currently a private repo so not enabled)
+ - Test result artifacts are available for download from the workflow run
+
+ **For Contributors**:
+ - Create applicable tests for all new code
+ - Run new and existing tests locally before pushing: ie. `Invoke-Pester .\Tests\`
+ - Ensure all tests pass before creating a PR
+ - Check the "Checks" tab in your PR to view test results
+ - Download test artifacts from the workflow run if you need detailed failure information
 
 
  ## Installation
