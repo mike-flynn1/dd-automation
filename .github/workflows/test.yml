@@ -26,7 +26,7 @@ jobs:
           $config.Output.Verbosity = 'Detailed'
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = 'test-results.xml'
-          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.TestResult.OutputFormat = 'JUnitXml'
 
           $result = Invoke-Pester -Configuration $config
 
