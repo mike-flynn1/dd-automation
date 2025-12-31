@@ -30,7 +30,7 @@ Thumbs.db
 # Ignore user-specific PowerShell configuration files
 config/*.psd1
 # Ignore Copilot AI files
-.github/ 
+.github/copilot-instructions.md
 CLAUDE.md
 .claude/
 AGENTS.md
