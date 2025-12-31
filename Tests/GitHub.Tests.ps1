@@ -221,6 +221,7 @@ Describe 'GitHub-CodeQLDownload' {
             throw (New-Object System.Exception 'REST failure')
         } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
         Mock Invoke-WebRequest {}
+        Mock Write-Log {}
 
         { GitHub-CodeQLDownload } | Should -Not -Throw
         Assert-MockCalled Invoke-WebRequest -Times 0
