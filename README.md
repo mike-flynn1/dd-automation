@@ -81,64 +81,6 @@ Tools = @{
 }
 ```
 
-### GitHub Configuration
-- Populate `GitHub = @{ Orgs = @('your-org-1','your-org-2') }` in your config file.
-- Supply one organization for single-tenant use or add multiple entries to process each org sequentially when `GitHub` is selected in the GUI.
-- Ensure `GITHUB_PAT` has access to every listed organization (CodeQL/Secret Scanning permissions as required).
-- The launcher exposes a `GitHub Orgs` textbox populated from the config; update the comma-separated list there to override and persist organizations without editing the PSD1 manually.
-- Enable or disable individual GitHub features via `Tools.GitHub.CodeQL`, `.SecretScanning`, and `.Dependabot` as shown above; each checkbox in the GUI maps directly to these nested settings.
-
-#### Repository Filtering
-The GitHub integration supports flexible repository filtering to control which repositories are processed:
-
-**Skip Archived Repositories** (default: enabled)
-```powershell
-GitHub = @{
-    SkipArchivedRepos = $true  # Skip archived repos (default: true)
-}
-```
-
-**Include-Only Filter** (whitelist)
-When specified, ONLY repositories matching these patterns will be processed:
-```powershell
-GitHub = @{
-    IncludeRepos = @(
-        'production-*'     # All repos starting with 'production-'
-        'critical-app'     # Exact match
-        '*-api'            # All repos ending with '-api'
-        '*security*'       # Any repo containing 'security'
-    )
-}
-```
-
-**Exclude Filter** (blacklist)
-Repositories matching these patterns will be skipped (applied after include filter):
-```powershell
-GitHub = @{
-    ExcludeRepos = @(
-        'test-*'           # Skip all test repos
-        '*-demo'           # Skip all demo repos
-        'archived-*'       # Skip repos starting with 'archived-'
-        'old-legacy-app'   # Skip specific repo
-    )
-}
-```
-
-**Pattern Matching:**
-- Supports PowerShell wildcards: `*` (matches any characters), `?` (matches single character)
-- Patterns are case-insensitive
-- Examples:
-  - `production-*` matches: `production-app`, `production-api`, `production-web`
-  - `*-test` matches: `myapp-test`, `api-test`, `frontend-test`
-  - `*security*` matches: `security-tools`, `app-security`, `security`
-
-**Filter Order:**
-1. Skip archived repos (if enabled)
-2. Apply include filter (if specified)
-3. Apply exclude filter (if specified)
-
-**Logging:**
-All filtering decisions are logged to `logs/DDAutomationLauncher_Renewed.log` for transparency, showing which repos were skipped and why.
 
 ## Folder Structure
 ```
@@ -320,7 +262,66 @@ The GitHub integration automatically downloads and processes security findings f
 - Configure organization names in `config/config.psd1` under the `GitHub.org` property (array of strings for multiple orgs)
 - The tool automatically handles repositories without Advanced Security enabled by logging warnings and skipping
 
-### Limitations
+#### Config File Specifics
+- Populate `GitHub = @{ Orgs = @('your-org-1','your-org-2') }` in your config file.
+- Supply one organization for single-tenant use or add multiple entries to process each org sequentially when `GitHub` is selected in the GUI.
+- Ensure `GITHUB_PAT` has access to every listed organization (CodeQL/Secret Scanning permissions as required).
+- The launcher exposes a `GitHub Orgs` textbox populated from the config; update the comma-separated list there to override and persist organizations without editing the PSD1 manually.
+- Enable or disable individual GitHub features via `Tools.GitHub.CodeQL`, `.SecretScanning`, and `.Dependabot` as shown above; each checkbox in the GUI maps directly to these nested settings.
+
+##### Repository Filtering
+The GitHub integration supports flexible repository filtering to control which repositories are processed:
+
+**Skip Archived Repositories** (default: enabled)
+```powershell
+GitHub = @{
+    SkipArchivedRepos = $true  # Skip archived repos (default: true)
+}
+```
+
+**Include-Only Filter** (whitelist)
+When specified, ONLY repositories matching these patterns will be processed:
+```powershell
+GitHub = @{
+    IncludeRepos = @(
+        'production-*'     # All repos starting with 'production-'
+        'critical-app'     # Exact match
+        '*-api'            # All repos ending with '-api'
+        '*security*'       # Any repo containing 'security'
+    )
+}
+```
+
+**Exclude Filter** (blacklist)
+Repositories matching these patterns will be skipped (applied after include filter):
+```powershell
+GitHub = @{
+    ExcludeRepos = @(
+        'test-*'           # Skip all test repos
+        '*-demo'           # Skip all demo repos
+        'archived-*'       # Skip repos starting with 'archived-'
+        'old-legacy-app'   # Skip specific repo
+    )
+}
+```
+
+**Pattern Matching:**
+- Supports PowerShell wildcards: `*` (matches any characters), `?` (matches single character)
+- Patterns are case-insensitive
+- Examples:
+  - `production-*` matches: `production-app`, `production-api`, `production-web`
+  - `*-test` matches: `myapp-test`, `api-test`, `frontend-test`
+  - `*security*` matches: `security-tools`, `app-security`, `security`
+
+**Filter Order:**
+1. Skip archived repos (if enabled)
+2. Apply include filter (if specified)
+3. Apply exclude filter (if specified)
+
+**Logging:**
+All filtering decisions are logged to `logs/DDAutomationLauncher_Renewed.log` for transparency, showing which repos were skipped and why.
+
+##### Limitations
 - Only processes the latest analysis per CodeQL category
 - Only retrieves open secret scanning alerts (not resolved/closed)
 - Requires GitHub Advanced Security features to be enabled on target repositories for CodeQL/Secret Scanning
