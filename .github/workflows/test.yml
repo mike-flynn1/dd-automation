@@ -22,12 +22,13 @@ jobs:
         run: |
           $config = New-PesterConfiguration
           $config.Run.Path = './Tests'
+          $config.Run.PassThru = $true
           $config.Output.Verbosity = 'Detailed'
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = 'test-results.xml'
           $config.TestResult.OutputFormat = 'NUnitXml'
 
-          $result = Invoke-Pester -Configuration $config -PassThru
+          $result = Invoke-Pester -Configuration $config
 
           if ($result.FailedCount -gt 0) {
               exit 1
