@@ -409,7 +409,7 @@ function GitHub-SecretScanDownload {
         [Parameter(Mandatory=$false)]
         [string[]]$Owners,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 200
+        [int]$Limit = 100
     )
 
     $context = Get-GitHubContext -Owners $Owners
@@ -467,7 +467,7 @@ function GitHub-DependabotDownload {
         [Parameter(Mandatory=$false)]
         [string[]]$Owners,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 200
+        [int]$Limit = 100
     )
 
     $context = Get-GitHubContext -Owners $Owners
