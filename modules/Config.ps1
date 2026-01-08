@@ -174,16 +174,6 @@ function Save-Config {
         $sb.AppendLine("        $api = '$url'") | Out-Null
     }
     $sb.AppendLine('    }') | Out-Null
-    #TenableWAS ScanId
-    if ($Config.ContainsKey('TenableWASScanId')) {
-        $sb.AppendLine('') | Out-Null
-        $scanId = $Config.TenableWASScanId
-        if ($null -ne $scanId) {
-            $sb.AppendLine("    TenableWASScanId = '$scanId'") | Out-Null
-        } else {
-            $sb.AppendLine('    TenableWASScanId = $null') | Out-Null
-        }
-    }
     # TenableWAS ScanNames
     if ($Config.ContainsKey('TenableWASScanNames')) {
         $sb.AppendLine('') | Out-Null

@@ -1,11 +1,40 @@
 <#
 .SYNOPSIS
     Generate and download a Tenable WAS scan report via API
+
 .DESCRIPTION
     Uses the Tenable WAS v2 API to request generation of a scan report for a specified scan name or scan ID,
     then downloads the resulting CSV file to a temporary location and returns its path.
     This is a two-step process: a PUT request to initiate report generation followed by
     a GET request to retrieve the report.
+
+    Scan name is the preferred parameter. If provided, the function will look up the scan ID
+    from the latest scan configuration matching that name using Get-TenableWASScanConfigs.
+
+.PARAMETER ScanName
+    The display name of the scan configuration in Tenable WAS (preferred method).
+    The function will look up the corresponding scan ID from the most recent scan.
+    This parameter is preferred over ScanId because it's more user-friendly and remains
+    consistent even as new scans are executed.
+
+.PARAMETER ScanId
+    The GUID of a specific scan in Tenable WAS (legacy method, still supported).
+    If not provided and ScanName is not specified, will throw an error.
+
+.OUTPUTS
+    Returns the downloaded CSV report file in the temp directory.
+
+.EXAMPLE
+    Export-TenableWASScan -ScanName "Production Web App Scan"
+
+    Downloads the report for the most recent scan with the name "Production Web App Scan".
+    Output file: %TEMP%\Production Web App Scan.csv
+
+.NOTES
+    - Requires TENWAS_ACCESS_KEY and TENWAS_SECRET_KEY environment variables
+    - Uses scan name for output filename when available for better readability
+    - Reports are saved to system temp directory (%TEMP%)
+    - Scan name lookup uses the most recent scan (last_scan.scan_id from API)
 #>
 
 . (Join-Path $PSScriptRoot 'Logging.ps1')
@@ -16,7 +45,7 @@ function Export-TenableWASScan {
     param(
         [Parameter(Mandatory = $false)]
         [string]$ScanId,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$ScanName
     )
@@ -24,14 +53,14 @@ function Export-TenableWASScan {
     # Load configuration
     $config = Get-Config
 
-    # Determine Scan ID from parameter, name lookup, or config
+    # Determine Scan ID from parameter or name lookup
     if (-not $ScanId) {
         if ($ScanName) {
             # Look up scan ID by name
             Write-Log -Message "Looking up scan ID for scan name: $ScanName" -Level 'INFO'
             $scanConfigs = Get-TenableWASScanConfigs
             $matchedScan = $scanConfigs | Where-Object { $_.Name -eq $ScanName }
-            
+
             if ($matchedScan) {
                 $ScanId = $matchedScan.Id
                 Write-Log -Message "Found scan ID $ScanId for scan name: $ScanName" -Level 'INFO'
@@ -39,10 +68,6 @@ function Export-TenableWASScan {
                 Write-Log -Message "No scan found with name: $ScanName" -Level 'ERROR'
                 Throw "No scan found with name: $ScanName"
             }
-        } elseif ($config.TenableWAS -and $config.TenableWAS.ScanId) {
-            $ScanId = $config.TenableWAS.ScanId
-        } elseif ($config.TenableWASScanId) {
-            $ScanId = $config.TenableWASScanId
         } else {
             Throw "No TenableWAS ScanId or ScanName specified."
         }
@@ -93,6 +118,47 @@ function Export-TenableWASScan {
     return $outFile
 }
 
+<#
+.SYNOPSIS
+    Retrieves all active Tenable WAS scan configurations with their latest scan IDs
+
+.DESCRIPTION
+    Queries the Tenable WAS v2 API to retrieve all scan configurations, filtering out
+    trashed scans and those without completed scans. Returns scan name and the ID
+    of the most recent scan for each configuration.
+
+    This function uses pagination to handle large result sets and implements deduplication
+    to handle API pagination quirks. Results are sorted alphabetically by scan name.
+
+    The function is used to populate the GUI scan selection list and to resolve scan
+    names to scan IDs for the Export-TenableWASScan function.
+
+.OUTPUTS
+    System.Management.Automation.PSCustomObject[]
+    Array of PSCustomObject with properties:
+    - Name: Display name of the scan configuration
+    - Id: Scan ID of the most recent completed scan (from last_scan.scan_id)
+
+.EXAMPLE
+    $scans = Get-TenableWASScanConfigs
+    $scans | Format-Table Name, Id
+
+    Retrieves all available scan configurations and displays them in a table
+
+.EXAMPLE
+    $scanId = (Get-TenableWASScanConfigs | Where-Object { $_.Name -eq "My Scan" }).Id
+    Export-TenableWASScan -ScanId $scanId
+
+    Looks up the scan ID for a specific scan configuration by name and exports it
+
+.NOTES
+    - Requires TENWAS_ACCESS_KEY and TENWAS_SECRET_KEY environment variables
+    - Only returns scans that have been completed at least once (must have last_scan.scan_id)
+    - Filters out scans in the trash (in_trash = true)
+    - Implements pagination with duplicate detection to handle API inconsistencies
+    - Page size is set to 200 items per request
+    - Stops pagination after 3 consecutive pages with only duplicate items
+#>
 function Get-TenableWASScanConfigs {
     [CmdletBinding()]
     param()
@@ -103,7 +169,7 @@ function Get-TenableWASScanConfigs {
     $secretKey = [Environment]::GetEnvironmentVariable('TENWAS_SECRET_KEY')
 
     if (-not $accessKey -or -not $secretKey) {
-        Write-Log -Message "Missing Tenable WAS API credentials." -Level 'ERROR' 2>$null
+        Write-Log -Message "Missing Tenable WAS API credentials." -Level 'ERROR'
         return [object[]]@()
     }
 
@@ -194,7 +260,7 @@ function Get-TenableWASScanConfigs {
 
         return ($results | Sort-Object -Property Name, Id)
     } catch {
-        Write-Log -Message "Failed to fetch Tenable WAS configs: $_" -Level 'ERROR' 2>$null
+        Write-Log -Message "Failed to fetch Tenable WAS configs: $_" -Level 'ERROR'
         return [object[]]@()
     }
 }

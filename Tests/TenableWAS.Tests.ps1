@@ -49,7 +49,7 @@ Describe 'Export-TenableWASScan (Unit)' {
     Context 'When credentials are missing' {
         BeforeAll {
             $script:OriginalGetConfig_MissingCreds = (Get-Command Get-Config -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
-            Set-Item function:Get-Config -Value { return @{ TenableWAS = @{ ScanId = 'dummy-scan-id' }; ApiBaseUrls = @{ TenableWAS = 'https://example.com' } } }
+            Set-Item function:Get-Config -Value { return @{ ApiBaseUrls = @{ TenableWAS = 'https://example.com' } } }
             Initialize-Log -LogDirectory (Join-Path $TestDrive 'logs') -LogFileName 'unit-missingcreds.log' -Overwrite
             Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
             Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
@@ -185,8 +185,9 @@ Describe 'Get-TenableWASScanConfigs (Unit)' {
                 Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
             }
         }
-        It 'Throws an error when credentials are missing' {
-            { Get-TenableWASScanConfigs } | Should -Throw 'Missing Tenable WAS API credentials.'
+        It 'Returns empty array when credentials are missing' {
+            $result = Get-TenableWASScanConfigs
+            $result | Should -BeNullOrEmpty
         }
     }
 
@@ -305,10 +306,11 @@ Describe 'Get-TenableWASScanConfigs (Unit)' {
             ($result | Where-Object { $_.Name -eq 'No Last Scan' }) | Should -BeNullOrEmpty
         }
 
-        It 'Throws an error when API call fails' {
+        It 'Returns empty array when API call fails' {
             Mock Invoke-RestMethod { throw "API Error" }
 
-            { Get-TenableWASScanConfigs } | Should -Throw -ExpectedMessage "Failed to fetch Tenable WAS configs*"
+            $result = Get-TenableWASScanConfigs
+            $result | Should -BeNullOrEmpty
         }
     }
 }
@@ -329,47 +331,30 @@ Describe 'Export-TenableWASScan (Integration)' {
 
         $script:integrationConfig = Get-Config
         $script:integrationScanNames = @()
-        $script:integrationScanId = $null
-        
-        # Try to get scan names first (preferred), fall back to scan ID
+
+        # Get scan names from configuration
         if ($script:integrationConfig.TenableWASScanNames -and $script:integrationConfig.TenableWASScanNames.Count -gt 0) {
             $script:integrationScanNames = @($script:integrationConfig.TenableWASScanNames)
-        } elseif ($script:integrationConfig.TenableWAS -and $script:integrationConfig.TenableWAS.ScanId) {
-            $script:integrationScanId = $script:integrationConfig.TenableWAS.ScanId
-        } elseif ($script:integrationConfig.TenableWASScanId) {
-            $script:integrationScanId = $script:integrationConfig.TenableWASScanId
         }
 
-        if ($script:integrationScanNames.Count -eq 0 -and -not $script:integrationScanId) {
-            Throw 'TenableWASScanNames array or ScanId not set in configuration.'
+        if ($script:integrationScanNames.Count -eq 0) {
+            Throw 'TenableWASScanNames array not set in configuration.'
         }
     }
 
     It 'Generates and downloads a report CSV file using scan names' {
-        # Use first scan name if available, otherwise fall back to scan ID
-        $params = @{}
-        if ($script:integrationScanNames.Count -gt 0) {
-            $params['ScanName'] = $script:integrationScanNames[0]
-            $testScanName = $script:integrationScanNames[0]
-        } else {
-            $params['ScanId'] = $script:integrationScanId
-            $testScanName = $null
-        }
-        
-        $outPath = Export-TenableWASScan @params
+        # Use first scan name from configuration
+        $testScanName = $script:integrationScanNames[0]
+
+        $outPath = Export-TenableWASScan -ScanName $testScanName
         if ($outPath -is [System.IO.FileSystemInfo]) {
             $outPath = $outPath.FullName
         } elseif ($outPath) {
             $outPath = [string]$outPath
         }
 
-        # Build expected filename based on what was used
-        $expectedFileName = if ($testScanName) {
-            "$($testScanName).csv"
-        } else {
-            "$($script:integrationScanId)-report.csv"
-        }
-        
+        # Build expected filename based on scan name
+        $expectedFileName = "$testScanName.csv"
         $expectedPath = Join-Path ([System.IO.Path]::GetTempPath()) $expectedFileName
         $candidatePaths = @($outPath, $expectedPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         $resolvedOutPath = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -379,13 +364,8 @@ Describe 'Export-TenableWASScan (Integration)' {
 
         $resolvedOutPath | Should -Not -BeNullOrEmpty
         $fileName = [System.IO.Path]::GetFileName($resolvedOutPath)
-        
-        if ($testScanName) {
-            $fileName | Should -Match ([regex]::Escape($testScanName) + "\.csv$")
-        } else {
-            $fileName | Should -Match "${script:integrationScanId}-report\.csv$"
-        }
-        
+        $fileName | Should -Match ([regex]::Escape($testScanName) + "\.csv$")
+
         Test-Path $resolvedOutPath | Should -BeTrue
         (Get-Item $resolvedOutPath).Length | Should -BeGreaterThan 0
     }
