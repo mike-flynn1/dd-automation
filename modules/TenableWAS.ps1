@@ -2,7 +2,7 @@
 .SYNOPSIS
     Generate and download a Tenable WAS scan report via API
 .DESCRIPTION
-    Uses the Tenable WAS v2 API to request generation of a scan report for a specified scan ID,
+    Uses the Tenable WAS v2 API to request generation of a scan report for a specified scan name or scan ID,
     then downloads the resulting CSV file to a temporary location and returns its path.
     This is a two-step process: a PUT request to initiate report generation followed by
     a GET request to retrieve the report.
@@ -15,21 +15,36 @@ function Export-TenableWASScan {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ScanId
+        [string]$ScanId,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ScanName
     )
 
     # Load configuration
     $config = Get-Config
 
-
-    # Determine Scan ID from parameter or config
+    # Determine Scan ID from parameter, name lookup, or config
     if (-not $ScanId) {
-        if ($config.TenableWAS -and $config.TenableWAS.ScanId) {
+        if ($ScanName) {
+            # Look up scan ID by name
+            Write-Log -Message "Looking up scan ID for scan name: $ScanName" -Level 'INFO'
+            $scanConfigs = Get-TenableWASScanConfigs
+            $matchedScan = $scanConfigs | Where-Object { $_.Name -eq $ScanName }
+            
+            if ($matchedScan) {
+                $ScanId = $matchedScan.Id
+                Write-Log -Message "Found scan ID $ScanId for scan name: $ScanName" -Level 'INFO'
+            } else {
+                Write-Log -Message "No scan found with name: $ScanName" -Level 'ERROR'
+                Throw "No scan found with name: $ScanName"
+            }
+        } elseif ($config.TenableWAS -and $config.TenableWAS.ScanId) {
             $ScanId = $config.TenableWAS.ScanId
         } elseif ($config.TenableWASScanId) {
             $ScanId = $config.TenableWASScanId
         } else {
-            Throw "No TenableWAS ScanId specified."
+            Throw "No TenableWAS ScanId or ScanName specified."
         }
     }
 
@@ -63,10 +78,12 @@ function Export-TenableWASScan {
     Write-Log -Message "Scan report URL: $reportUri" -Level 'INFO'
     Write-Log -Message "Downloading report for Tenable WAS scan ID $ScanId" -Level 'INFO'
     $tempPath = [System.IO.Path]::GetTempPath()
-    $fileName = "$ScanId-report.csv"
+    
+    # Use scan name for filename if available, otherwise use scan ID
+    $fileName = if ($ScanName) { "$ScanName.csv" } else { "$ScanId-report.csv" }
     $outFile = Join-Path -Path $tempPath -ChildPath $fileName
 
-        $headers = @{ 
+    $headers = @{ 
         "X-ApiKeys"    = "accessKey=$accessKey;secretKey=$secretKey" 
         "Accept"       = "application/json"
     }

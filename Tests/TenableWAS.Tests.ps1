@@ -41,8 +41,8 @@ Describe 'Export-TenableWASScan (Unit)' {
                 Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
             }
         }
-        It 'Throws an error indicating missing ScanId' {
-            { Export-TenableWASScan } | Should -Throw 'No TenableWAS ScanId specified.'
+        It 'Throws an error indicating missing ScanId or ScanName' {
+            { Export-TenableWASScan } | Should -Throw 'No TenableWAS ScanId or ScanName specified.'
         }
     }
 
@@ -75,6 +75,78 @@ Describe 'Export-TenableWASScan (Unit)' {
         }
         It 'Throws an error indicating missing credentials' {
             { Export-TenableWASScan -ScanId 'dummy-id' } | Should -Throw 'Missing Tenable WAS API credentials*'
+        }
+    }
+
+    Context 'When ScanName is provided instead of ScanId' {
+        BeforeAll {
+            $script:OriginalGetConfig_ScanName = (Get-Command Get-Config -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
+            $script:OriginalGetTenableWASScanConfigs = (Get-Command Get-TenableWASScanConfigs -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
+            
+            Set-Item function:Get-Config -Value { return @{ ApiBaseUrls = @{ TenableWAS = 'https://example.com' } } }
+            Initialize-Log -LogDirectory (Join-Path $TestDrive 'logs') -LogFileName 'unit-scanname.log' -Overwrite
+            $env:TENWAS_ACCESS_KEY = 'test-key'
+            $env:TENWAS_SECRET_KEY = 'test-secret'
+        }
+        AfterAll {
+            if ($script:OriginalGetConfig_ScanName) {
+                Set-Item function:Get-Config -Value $script:OriginalGetConfig_ScanName
+            } else {
+                Remove-Item function:Get-Config -ErrorAction SilentlyContinue
+            }
+
+            if ($script:OriginalGetTenableWASScanConfigs) {
+                Set-Item function:Get-TenableWASScanConfigs -Value $script:OriginalGetTenableWASScanConfigs
+            } else {
+                Remove-Item function:Get-TenableWASScanConfigs -ErrorAction SilentlyContinue
+            }
+
+            if ($null -ne $Global:OriginalTenwasAccessKey) {
+                $env:TENWAS_ACCESS_KEY = $Global:OriginalTenwasAccessKey
+            } else {
+                Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
+            }
+
+            if ($null -ne $Global:OriginalTenwasSecretKey) {
+                $env:TENWAS_SECRET_KEY = $Global:OriginalTenwasSecretKey
+            } else {
+                Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Resolves ScanName to ScanId and uses scan name in filename' {
+            Mock Get-TenableWASScanConfigs {
+                return @(
+                    @{ Name = 'Production Scan'; Id = 'scan-id-123' },
+                    @{ Name = 'SBIR DTK Console'; Id = 'scan-id-456' }
+                )
+            }
+            Mock Invoke-RestMethod { }
+
+            $result = Export-TenableWASScan -ScanName 'SBIR DTK Console'
+            
+            # Verify the result filename contains the scan name (without -report suffix)
+            $result | Should -Match 'SBIR DTK Console\.csv$'
+        }
+
+        It 'Throws error when ScanName does not exist' {
+            Mock Get-TenableWASScanConfigs -MockWith {
+                return @(
+                    @{ Name = 'Production Scan'; Id = 'scan-id-123' }
+                )
+            }
+
+            { Export-TenableWASScan -ScanName 'NonExistent Scan' } | Should -Throw 'No scan found with name: NonExistent Scan'
+        }
+
+        It 'Uses ScanId when both ScanId and ScanName are provided (ScanId takes precedence)' {
+            # This test should NOT call Get-TenableWASScanConfigs because ScanId is provided
+            Mock Invoke-RestMethod { }
+
+            $result = Export-TenableWASScan -ScanId 'explicit-scan-id'
+            
+            # Verify ScanId was used (filename will contain ID with -report suffix)
+            $result | Should -Match 'explicit-scan-id-report\.csv$'
         }
     }
 }
@@ -256,27 +328,49 @@ Describe 'Export-TenableWASScan (Integration)' {
         Initialize-Log -LogDirectory $tempLogDir -LogFileName 'integration.log' -Overwrite
 
         $script:integrationConfig = Get-Config
+        $script:integrationScanNames = @()
         $script:integrationScanId = $null
-        if ($script:integrationConfig.TenableWAS -and $script:integrationConfig.TenableWAS.ScanId) {
+        
+        # Try to get scan names first (preferred), fall back to scan ID
+        if ($script:integrationConfig.TenableWASScanNames -and $script:integrationConfig.TenableWASScanNames.Count -gt 0) {
+            $script:integrationScanNames = @($script:integrationConfig.TenableWASScanNames)
+        } elseif ($script:integrationConfig.TenableWAS -and $script:integrationConfig.TenableWAS.ScanId) {
             $script:integrationScanId = $script:integrationConfig.TenableWAS.ScanId
         } elseif ($script:integrationConfig.TenableWASScanId) {
             $script:integrationScanId = $script:integrationConfig.TenableWASScanId
         }
 
-        if (-not $script:integrationScanId) {
-            Throw 'ScanId not set in configuration (TenableWAS.ScanId or TenableWASScanId).'
+        if ($script:integrationScanNames.Count -eq 0 -and -not $script:integrationScanId) {
+            Throw 'TenableWASScanNames array or ScanId not set in configuration.'
         }
     }
 
-    It 'Generates and downloads a report CSV file' {
-        $outPath = Export-TenableWASScan -ScanId $script:integrationScanId
+    It 'Generates and downloads a report CSV file using scan names' {
+        # Use first scan name if available, otherwise fall back to scan ID
+        $params = @{}
+        if ($script:integrationScanNames.Count -gt 0) {
+            $params['ScanName'] = $script:integrationScanNames[0]
+            $testScanName = $script:integrationScanNames[0]
+        } else {
+            $params['ScanId'] = $script:integrationScanId
+            $testScanName = $null
+        }
+        
+        $outPath = Export-TenableWASScan @params
         if ($outPath -is [System.IO.FileSystemInfo]) {
             $outPath = $outPath.FullName
         } elseif ($outPath) {
             $outPath = [string]$outPath
         }
 
-        $expectedPath = Join-Path ([System.IO.Path]::GetTempPath()) ("${script:integrationScanId}-report.csv")
+        # Build expected filename based on what was used
+        $expectedFileName = if ($testScanName) {
+            "$($testScanName).csv"
+        } else {
+            "$($script:integrationScanId)-report.csv"
+        }
+        
+        $expectedPath = Join-Path ([System.IO.Path]::GetTempPath()) $expectedFileName
         $candidatePaths = @($outPath, $expectedPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         $resolvedOutPath = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
         if (-not $resolvedOutPath) {
@@ -284,7 +378,14 @@ Describe 'Export-TenableWASScan (Integration)' {
         }
 
         $resolvedOutPath | Should -Not -BeNullOrEmpty
-        [System.IO.Path]::GetFileName($resolvedOutPath) | Should -Match "${script:integrationScanId}-report\.csv$"
+        $fileName = [System.IO.Path]::GetFileName($resolvedOutPath)
+        
+        if ($testScanName) {
+            $fileName | Should -Match ([regex]::Escape($testScanName) + "\.csv$")
+        } else {
+            $fileName | Should -Match "${script:integrationScanId}-report\.csv$"
+        }
+        
         Test-Path $resolvedOutPath | Should -BeTrue
         (Get-Item $resolvedOutPath).Length | Should -BeGreaterThan 0
     }

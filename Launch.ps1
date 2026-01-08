@@ -866,7 +866,7 @@ function Process-TenableWAS {
     foreach ($scan in $Config.TenableWASSelectedScans) {
         Write-GuiMessage "Starting TenableWAS scan export (Scan: $($scan.Name) - ID: $($scan.Id))"
         try {
-            $exportedFile = Export-TenableWASScan -ScanId $scan.Id
+            $exportedFile = Export-TenableWASScan -ScanName $scan.Name
             Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
 
             if ($Config.Tools.DefectDojo) {
