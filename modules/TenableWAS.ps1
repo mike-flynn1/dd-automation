@@ -86,8 +86,8 @@ function Get-TenableWASScanConfigs {
     $secretKey = [Environment]::GetEnvironmentVariable('TENWAS_SECRET_KEY')
 
     if (-not $accessKey -or -not $secretKey) {
-        Write-Log -Message "Missing Tenable WAS API credentials." -Level 'ERROR'
-        return @()
+        Write-Log -Message "Missing Tenable WAS API credentials." -Level 'ERROR' 2>$null
+        return [object[]]@()
     }
 
     $headers = @{ 
@@ -120,16 +120,21 @@ function Get-TenableWASScanConfigs {
 
             $addedThisPage = 0
             foreach ($item in $items) {
-                # Skip trashed configs
+                # Skip trashed scans
                 if ($item.in_trash) {
                     continue
                 }
-                
-                $idStr = [string]$item.config_id
+
+                # Skip configurations that have no last_scan
+                if (-not $item.last_scan -or -not $item.last_scan.scan_id) {
+                    continue
+                }
+
+                $idStr = [string]$item.last_scan.scan_id
                 if ($idStr -and $seenIds.Add($idStr)) {
                     $results += [PSCustomObject]@{
                         Name = $item.name
-                        Id   = $item.config_id
+                        Id   = $item.last_scan.scan_id
                     }
                     $addedThisPage++
                 }
@@ -172,8 +177,8 @@ function Get-TenableWASScanConfigs {
 
         return ($results | Sort-Object -Property Name, Id)
     } catch {
-        Write-Log -Message "Failed to fetch Tenable WAS configs: $_" -Level 'ERROR'
-        return @()
+        Write-Log -Message "Failed to fetch Tenable WAS configs: $_" -Level 'ERROR' 2>$null
+        return [object[]]@()
     }
 }
 
