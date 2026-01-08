@@ -3,23 +3,17 @@
     Generate and download a Tenable WAS scan report via API
 
 .DESCRIPTION
-    Uses the Tenable WAS v2 API to request generation of a scan report for a specified scan name or scan ID,
+    Uses the Tenable WAS v2 API to request generation of a scan report for a specified scan name,
     then downloads the resulting CSV file to a temporary location and returns its path.
     This is a two-step process: a PUT request to initiate report generation followed by
     a GET request to retrieve the report.
 
-    Scan name is the preferred parameter. If provided, the function will look up the scan ID
-    from the latest scan configuration matching that name using Get-TenableWASScanConfigs.
+    The function looks up the scan ID from the latest scan configuration matching the provided
+    scan name using Get-TenableWASScanConfigs.
 
 .PARAMETER ScanName
-    The display name of the scan configuration in Tenable WAS (preferred method).
+    The display name of the scan configuration in Tenable WAS (required).
     The function will look up the corresponding scan ID from the most recent scan.
-    This parameter is preferred over ScanId because it's more user-friendly and remains
-    consistent even as new scans are executed.
-
-.PARAMETER ScanId
-    The GUID of a specific scan in Tenable WAS (legacy method, still supported).
-    If not provided and ScanName is not specified, will throw an error.
 
 .OUTPUTS
     Returns the downloaded CSV report file in the temp directory.
@@ -32,7 +26,7 @@
 
 .NOTES
     - Requires TENWAS_ACCESS_KEY and TENWAS_SECRET_KEY environment variables
-    - Uses scan name for output filename when available for better readability
+    - Uses scan name for output filename for better readability
     - Reports are saved to system temp directory (%TEMP%)
     - Scan name lookup uses the most recent scan (last_scan.scan_id from API)
 #>
@@ -43,34 +37,24 @@
 function Export-TenableWASScan {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $false)]
-        [string]$ScanId,
-
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string]$ScanName
     )
 
     # Load configuration
     $config = Get-Config
 
-    # Determine Scan ID from parameter or name lookup
-    if (-not $ScanId) {
-        if ($ScanName) {
-            # Look up scan ID by name
-            Write-Log -Message "Looking up scan ID for scan name: $ScanName" -Level 'INFO'
-            $scanConfigs = Get-TenableWASScanConfigs
-            $matchedScan = $scanConfigs | Where-Object { $_.Name -eq $ScanName }
+    # Look up scan ID by name
+    Write-Log -Message "Looking up scan ID for scan name: $ScanName" -Level 'INFO'
+    $scanConfigs = Get-TenableWASScanConfigs
+    $matchedScan = $scanConfigs | Where-Object { $_.Name -eq $ScanName }
 
-            if ($matchedScan) {
-                $ScanId = $matchedScan.Id
-                Write-Log -Message "Found scan ID $ScanId for scan name: $ScanName" -Level 'INFO'
-            } else {
-                Write-Log -Message "No scan found with name: $ScanName" -Level 'ERROR'
-                Throw "No scan found with name: $ScanName"
-            }
-        } else {
-            Throw "No TenableWAS ScanId or ScanName specified."
-        }
+    if ($matchedScan) {
+        $ScanId = $matchedScan.Id
+        Write-Log -Message "Found scan ID $ScanId for scan name: $ScanName" -Level 'INFO'
+    } else {
+        Write-Log -Message "No scan found with name: $ScanName" -Level 'ERROR'
+        Throw "No scan found with name: $ScanName"
     }
 
     # Prepare API connection
@@ -104,8 +88,8 @@ function Export-TenableWASScan {
     Write-Log -Message "Downloading report for Tenable WAS scan ID $ScanId" -Level 'INFO'
     $tempPath = [System.IO.Path]::GetTempPath()
     
-    # Use scan name for filename if available, otherwise use scan ID
-    $fileName = if ($ScanName) { "$ScanName.csv" } else { "$ScanId-report.csv" }
+    # Use scan name for filename
+    $fileName = "$ScanName.csv"
     $outFile = Join-Path -Path $tempPath -ChildPath $fileName
 
     $headers = @{ 

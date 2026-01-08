@@ -14,38 +14,6 @@ Describe 'Export-TenableWASScan (Unit)' {
         . (Join-Path $Global:TenableWasModuleDir 'TenableWAS.ps1')
     }
 
-    Context 'When no scan ID is provided via parameter or config' {
-        BeforeAll {
-            $script:OriginalGetConfig_NoScan = (Get-Command Get-Config -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
-            Set-Item function:Get-Config -Value { return @{} }
-            Initialize-Log -LogDirectory (Join-Path $TestDrive 'logs') -LogFileName 'unit-noscan.log' -Overwrite
-            $env:TENWAS_ACCESS_KEY = 'dummy'
-            $env:TENWAS_SECRET_KEY = 'dummy'
-        }
-        AfterAll {
-            if ($script:OriginalGetConfig_NoScan) {
-                Set-Item function:Get-Config -Value $script:OriginalGetConfig_NoScan
-            } else {
-                Remove-Item function:Get-Config -ErrorAction SilentlyContinue
-            }
-
-            if ($null -ne $Global:OriginalTenwasAccessKey) {
-                $env:TENWAS_ACCESS_KEY = $Global:OriginalTenwasAccessKey
-            } else {
-                Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
-            }
-
-            if ($null -ne $Global:OriginalTenwasSecretKey) {
-                $env:TENWAS_SECRET_KEY = $Global:OriginalTenwasSecretKey
-            } else {
-                Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
-            }
-        }
-        It 'Throws an error indicating missing ScanId or ScanName' {
-            { Export-TenableWASScan } | Should -Throw 'No TenableWAS ScanId or ScanName specified.'
-        }
-    }
-
     Context 'When credentials are missing' {
         BeforeAll {
             $script:OriginalGetConfig_MissingCreds = (Get-Command Get-Config -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
@@ -74,7 +42,12 @@ Describe 'Export-TenableWASScan (Unit)' {
             }
         }
         It 'Throws an error indicating missing credentials' {
-            { Export-TenableWASScan -ScanId 'dummy-id' } | Should -Throw 'Missing Tenable WAS API credentials*'
+            Mock Get-TenableWASScanConfigs {
+                return @(
+                    @{ Name = 'Test Scan'; Id = 'dummy-id' }
+                )
+            }
+            { Export-TenableWASScan -ScanName 'Test Scan' } | Should -Throw 'Missing Tenable WAS API credentials*'
         }
     }
 
@@ -138,16 +111,6 @@ Describe 'Export-TenableWASScan (Unit)' {
 
             { Export-TenableWASScan -ScanName 'NonExistent Scan' } | Should -Throw 'No scan found with name: NonExistent Scan'
         }
-
-        It 'Uses ScanId when both ScanId and ScanName are provided (ScanId takes precedence)' {
-            # This test should NOT call Get-TenableWASScanConfigs because ScanId is provided
-            Mock Invoke-RestMethod { }
-
-            $result = Export-TenableWASScan -ScanId 'explicit-scan-id'
-            
-            # Verify ScanId was used (filename will contain ID with -report suffix)
-            $result | Should -Match 'explicit-scan-id-report\.csv$'
-        }
     }
 }
 
@@ -186,6 +149,7 @@ Describe 'Get-TenableWASScanConfigs (Unit)' {
             }
         }
         It 'Returns empty array when credentials are missing' {
+            Mock Write-Log { }
             $result = Get-TenableWASScanConfigs
             $result | Should -BeNullOrEmpty
         }
@@ -308,6 +272,7 @@ Describe 'Get-TenableWASScanConfigs (Unit)' {
 
         It 'Returns empty array when API call fails' {
             Mock Invoke-RestMethod { throw "API Error" }
+            Mock Write-Log { }
 
             $result = Get-TenableWASScanConfigs
             $result | Should -BeNullOrEmpty
