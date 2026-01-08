@@ -184,6 +184,20 @@ function Save-Config {
             $sb.AppendLine('    TenableWASScanId = $null') | Out-Null
         }
     }
+    # TenableWAS ScanNames
+    if ($Config.ContainsKey('TenableWASScanNames')) {
+        $sb.AppendLine('') | Out-Null
+        $scanNames = $Config.TenableWASScanNames
+        if ($null -ne $scanNames -and $scanNames.Count -gt 0) {
+            $sb.AppendLine('    TenableWASScanNames = @(') | Out-Null
+            foreach ($name in $scanNames) {
+                $sb.AppendLine("        '$name'") | Out-Null
+            }
+            $sb.AppendLine('    )') | Out-Null
+        } else {
+            $sb.AppendLine('    TenableWASScanNames = @()') | Out-Null
+        }
+    }
     # DefectDojo selections
     if ($Config.ContainsKey('DefectDojo')) {
         $sb.AppendLine('') | Out-Null
