@@ -710,8 +710,36 @@ function Invoke-Automation {
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
         
         $selectedScans = $script:lstTenableScans.CheckedItems
+        $tenableScanNamesChanged = $false
         if ($selectedScans.Count -gt 0) {
-             $config.TenableWASScanNames = @($selectedScans | ForEach-Object { $_.Name })
+             $newScanNames = @($selectedScans | ForEach-Object { $_.Name })
+             
+             # Get existing scan names, filtering out nulls
+             $existingScanNames = if ($config.ContainsKey('TenableWASScanNames') -and $null -ne $config.TenableWASScanNames) {
+                 @($config.TenableWASScanNames | Where-Object { $_ })
+             } else {
+                 @()
+             }
+             
+             # Check if scan names have changed
+             if ($existingScanNames.Count -eq 0 -and $newScanNames.Count -gt 0) {
+                 # No existing scans, but we have new ones
+                 $tenableScanNamesChanged = $true
+             } elseif ($existingScanNames.Count -ne $newScanNames.Count) {
+                 # Different count
+                 $tenableScanNamesChanged = $true
+             } elseif ($existingScanNames.Count -gt 0) {
+                 # Same count, check if contents differ
+                 $differences = Compare-Object -ReferenceObject $existingScanNames -DifferenceObject $newScanNames -ErrorAction SilentlyContinue
+                 if ($differences) {
+                     $tenableScanNamesChanged = $true
+                 }
+             }
+             
+             if ($tenableScanNamesChanged) {
+                 $config.TenableWASScanNames = $newScanNames
+                 Write-GuiMessage "TenableWAS scan selection changed: $($newScanNames -join ', ')"
+             }
              $config.TenableWASSelectedScans = @($selectedScans)
         }
 
@@ -746,6 +774,17 @@ function Invoke-Automation {
             Write-GuiMessage 'GitHub organization textbox is empty; retaining existing configuration values.' 'WARNING'
             if ($config.GitHub.Orgs) {
                 $script:txtGitHubOrgs.Text = ($config.GitHub.Orgs -join ', ')
+            }
+        }
+
+        # Save TenableWAS scan selections if they changed
+        if ($tenableScanNamesChanged) {
+            try {
+                Write-GuiMessage "Saving TenableWAS scan selections to config..."
+                Save-Config -Config $config
+                Write-GuiMessage 'TenableWAS scan selection saved.'
+            } catch {
+                Write-GuiMessage "Failed to save TenableWAS scan selection: $_" 'ERROR'
             }
         }
 
