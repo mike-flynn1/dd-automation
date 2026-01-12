@@ -901,7 +901,7 @@ function Process-TenableWAS {
                         $existingTests = @($existingTests) + $newTest  # Add to cache
                         $testId = $newTest.Id
                     } catch {
-                        Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
+                        Write-GuiMessage "Failed to create test $serviceName: $_" 'ERROR'
                         $uploadErrors++
                         continue  # Skip to next scan
                     }
