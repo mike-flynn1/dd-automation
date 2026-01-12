@@ -166,7 +166,6 @@ TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'
 - **Scan Selection List**: Multi-select checklist populated from API (automatically loads when checkbox is checked)
 - **Search Box**: Filter scans by name (wildcards supported)
 - **Refresh Button**: Reload scan list from Tenable WAS API
-- **DD Test (Tenable WAS)**: Dropdown to select the specific DefectDojo test for upload (populated from selected engagement)
 
 ### File Locations
 - **Exported Reports**: `%TEMP%\{scanName}.csv` (Windows temporary directory)
