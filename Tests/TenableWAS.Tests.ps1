@@ -111,6 +111,23 @@ Describe 'Export-TenableWASScan (Unit)' {
 
             { Export-TenableWASScan -ScanName 'NonExistent Scan' } | Should -Throw 'No scan found with name: NonExistent Scan'
         }
+
+        It 'Surfaces friendly message when report is still generating' {
+            Mock Get-TenableWASScanConfigs {
+                return @(
+                    @{ Name = 'Production Scan'; Id = 'scan-id-123' }
+                )
+            }
+
+            Mock Invoke-RestMethod -ParameterFilter { $Method -eq 'Put' } { }
+            Mock Invoke-RestMethod -ParameterFilter { $Method -eq 'Get' } {
+                throw [System.Exception]::new('Scan report is still in progress')
+            }
+            Mock Write-Log { }
+
+            { Export-TenableWASScan -ScanName 'Production Scan' } | Should -Throw '*report not ready*'
+            Should -Invoke Write-Log -ParameterFilter { $Level -eq 'WARNING' -and $Message -match 'report not ready' }
+        }
     }
 }
 
@@ -762,7 +779,17 @@ Describe 'Export-TenableWASScan (Integration)' {
         # Use first scan name from configuration
         $testScanName = $script:integrationScanNames[0]
 
-        $outPath = Export-TenableWASScan -ScanName $testScanName
+        try {
+            $outPath = Export-TenableWASScan -ScanName $testScanName
+        } catch {
+            if ($_.Exception.Message -match 'report not ready|in progress|running') {
+                Write-Warning "Skipping TenableWAS integration: scan '$testScanName' is still in progress."
+                Set-ItResult -Skipped -Because "Scan '$testScanName' is still in progress; report not ready."
+                return
+            }
+
+            throw
+        }
         if ($outPath -is [System.IO.FileSystemInfo]) {
             $outPath = $outPath.FullName
         } elseif ($outPath) {

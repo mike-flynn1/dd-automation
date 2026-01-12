@@ -66,6 +66,34 @@ function Export-TenableWASScan {
         Throw "Missing Tenable WAS API credentials (TENWAS_ACCESS_KEY or TENWAS_SECRET_KEY)."
     }
 
+    # Helper to extract HTTP status codes from various exception shapes
+    $extractStatusCode = {
+        param($err)
+        $statusCode = $null
+        $response = $null
+        if ($err.Exception.PSObject.Properties['Response']) {
+            $response = $err.Exception.Response
+        }
+
+        if ($response -is [System.Net.Http.HttpResponseMessage]) {
+            $statusCode = [int]$response.StatusCode
+        } elseif ($response -is [System.Net.HttpWebResponse]) {
+            $statusCode = [int]$response.StatusCode
+        } elseif ($err.Exception.PSObject.Properties['StatusCode']) {
+            $statusCode = [int]$err.Exception.StatusCode
+        } elseif ($err.Exception -is [Microsoft.PowerShell.Commands.HttpResponseException]) {
+            try { $statusCode = [int]$err.Exception.Response.StatusCode } catch { }
+        }
+
+        if (-not $statusCode) {
+            $msg = $err.Exception.Message
+            $statusMatch = [regex]::Match($msg, 'StatusCode\s*[:=]\s*(\d{3})')
+            if ($statusMatch.Success) { $statusCode = [int]$statusMatch.Groups[1].Value }
+        }
+
+        return $statusCode
+    }
+
     # Build report endpoint URI
     $reportUri = "$apiUrl/was/v2/scans/$ScanId/report"
 
@@ -78,7 +106,21 @@ function Export-TenableWASScan {
 
     # Initiate report generation via PUT
     Write-Log -Message "Initiating report generation for Tenable WAS scan ID $ScanId" -Level 'INFO'
-    Invoke-RestMethod -Method Put -Uri $reportUri -Headers $headers -UseBasicParsing
+    try {
+        Invoke-RestMethod -Method Put -Uri $reportUri -Headers $headers -UseBasicParsing
+    } catch {
+        $statusCode = & $extractStatusCode $_
+        $errorMessage = $_.Exception.Message
+        $reportPending = $statusCode -in @(202, 400, 409, 425) -or ($errorMessage -match '(in\s+progress|running|not\s+ready|pending)')
+
+        if ($reportPending) {
+            Write-Log -Message "Tenable WAS report generation not ready for scan ID $ScanId (scan likely still running). StatusCode=$statusCode" -Level 'WARNING'
+            throw "Tenable WAS report not ready; the scan '$ScanName' (ID $ScanId) appears to be in progress. Try again once the scan completes."
+        }
+
+        Write-Log -Message "Failed to initiate Tenable WAS report for scan ID $ScanId. StatusCode=$statusCode. Error=$errorMessage" -Level 'ERROR'
+        throw
+    }
 
     # Allow time for report generation
     Start-Sleep -Seconds 2
@@ -103,7 +145,22 @@ function Export-TenableWASScan {
         "X-ApiKeys"    = "accessKey=$accessKey;secretKey=$secretKey" 
         "Accept"       = "application/json"
     }
-    Invoke-RestMethod -Method GET -Uri $reportUri -Headers $headers -OutFile $outFile -ContentType 'text/csv' -UseBasicParsing
+    try {
+        Invoke-RestMethod -Method GET -Uri $reportUri -Headers $headers -OutFile $outFile -ContentType 'text/csv' -UseBasicParsing
+    } catch {
+        $statusCode = & $extractStatusCode $_
+        $errorMessage = $_.Exception.Message
+        # Tenable can return 202/400/409/425 while the report is still being generated
+        $reportPending = $statusCode -in @(202, 400, 409, 425) -or ($errorMessage -match '(in\s+progress|running|not\s+ready|pending)')
+
+        if ($reportPending) {
+            Write-Log -Message "Tenable WAS report not ready for scan ID $ScanId (scan likely still running). StatusCode=$statusCode" -Level 'WARNING'
+            throw "Tenable WAS report not ready; the scan '$ScanName' (ID $ScanId) appears to be in progress. Try again once the scan completes."
+        }
+
+        Write-Log -Message "Failed to download Tenable WAS report for scan ID $ScanId. StatusCode=$statusCode. Error=$errorMessage" -Level 'ERROR'
+        throw
+    }
 
     Write-Log -Message "Tenable WAS report saved to $outFile" -Level 'INFO'
     return $outFile
