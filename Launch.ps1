@@ -889,7 +889,7 @@ function Process-TenableWAS {
 
                 # Step 3: Check if test exists
                 $existingTest = $existingTests | Where-Object {
-                    $_.title -in @($serviceName, $scan.Name, "$($scan.Name) (Tenable)")
+                    $_.Title -in @($serviceName, $scan.Name, "$($scan.Name) (Tenable)")
                 } | Select-Object -First 1
 
                 if (-not $existingTest) {
