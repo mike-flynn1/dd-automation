@@ -35,7 +35,6 @@
     DefectDojo = @{
         ProductId         = 0  # Enter the DefectDojo product Id
         EngagementId      = 0  # Enter the DefectDojo engagement Id
-        TenableWASTestId  = 0  # Enter the DefectDojo test Id for TenableWAS
         SonarQubeTestId   = 0  # Enter the DefectDojo test Id for SonarQube
         BurpSuiteTestId   = 0  # Enter the DefectDojo test Id for BurpSuite
         GitHubDependabotTestId = 0  # Enter the DefectDojo test Id for GitHub Dependabot alerts

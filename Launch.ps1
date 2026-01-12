@@ -165,7 +165,7 @@ function Initialize-GuiElements {
         
         # Add tooltips for each checkbox
         switch ($name) {
-            'TenableWAS' { $script:toolTip.SetToolTip($chk, "This checkbox downloads the specified Tenable scan to the Temp Directory specified in the log file.") }
+            'TenableWAS' { $script:toolTip.SetToolTip($chk, "Downloads selected Tenable WAS scans and uploads to DefectDojo. Each scan creates/updates its own test.") }
             'SonarQube' { $script:toolTip.SetToolTip($chk, "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo") }
             'BurpSuite' { $script:toolTip.SetToolTip($chk, "Scans the specified folder for BurpSuite XML reports and uploads them to DefectDojo.") }
             'DefectDojo' { $script:toolTip.SetToolTip($chk, "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload.") }
@@ -220,11 +220,10 @@ function Initialize-GuiElements {
         lblDDProduct            = [Tuple]::Create('DefectDojo Product:', 330)
         lblDDEng                = [Tuple]::Create('Engagement:', 360)
         lblDDApiScan            = [Tuple]::Create('API Scan Config:', 390)
-        lblDDTestTenable        = [Tuple]::Create('TenableWAS Test:', 420)
-        lblDDTestSonar          = [Tuple]::Create('SonarQube Test:', 450)
-        lblDDTestBurp           = [Tuple]::Create('BurpSuite Test:', 480)
-        lblDDTestDependabot     = [Tuple]::Create('Dependabot Test:', 510)
-        lblDDSeverity           = [Tuple]::Create('Minimum Severity:', 540)
+        lblDDTestSonar          = [Tuple]::Create('SonarQube Test:', 420)
+        lblDDTestBurp           = [Tuple]::Create('BurpSuite Test:', 450)
+        lblDDTestDependabot     = [Tuple]::Create('Dependabot Test:', 480)
+        lblDDSeverity           = [Tuple]::Create('Minimum Severity:', 510)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -293,8 +292,7 @@ function Register-EventHandlers {
         $script:btnBrowse.Enabled = $this.Checked
         $script:cmbDDTestBurp.Enabled = $this.Checked -and $script:cmbDDTestBurp.Items.Count -gt 0
     })
-    $chkBoxes['TenableWAS'].Add_CheckedChanged({ 
-        $script:cmbDDTestTenable.Enabled = $this.Checked -and $script:cmbDDTestTenable.Items.Count -gt 0
+    $chkBoxes['TenableWAS'].Add_CheckedChanged({
         $script:lstTenableScans.Enabled = $this.Checked
         $script:txtTenableSearch.Enabled = $this.Checked
         $script:btnRefreshTenable.Enabled = $this.Checked
@@ -373,7 +371,7 @@ function Handle-ProductChange {
         $script:cmbDDEng.Enabled = $true
 
         # Clear subsequent dropdowns
-        @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp) | ForEach-Object {
+        @($script:cmbDDTestSonar, $script:cmbDDTestBurp) | ForEach-Object {
             $_.Enabled = $false; $_.Items.Clear()
         }
     } catch {
@@ -388,7 +386,7 @@ function Handle-EngagementChange {
     Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
     try {
         $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
-        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestDependabot)) {
+        foreach ($cmb in @($script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestDependabot)) {
             $cmb.Items.Clear()
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
@@ -396,13 +394,11 @@ function Handle-EngagementChange {
             $cmb.ValueMember = 'Id'
         }
         # Set DisplayMember based on needed display, Title works for most Dojo tests
-        $script:cmbDDTestTenable.DisplayMember = 'Title'   # Show test title for TenableWAS
         $script:cmbDDTestSonar.DisplayMember = 'Title'     # Show test type title for SonarQube
         $script:cmbDDTestBurp.DisplayMember = 'Title'      # Show test type title for BurpSuite
         $script:cmbDDTestDependabot.DisplayMember = 'Title'
 
         # Re-evaluate enabled state based on tool selection and if tests were found
-        $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
         $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestDependabot.Enabled = $script:chkBoxes['GitHubDependabot'].Checked -and $tests.Count -gt 0
@@ -643,12 +639,8 @@ function Prepopulate-FormFromConfig {
                         $script:cmbDDEng.SelectedItem = $selectedEngagement
                         Handle-EngagementChange
                         $script:form.Update()
-                        
+
                         # Pre-select test dropdowns after engagement is loaded
-                        if ($Config.DefectDojo.TenableWASTestId) {
-                            $selectedTenableTest = $script:cmbDDTestTenable.Items | Where-Object { $_.Id -eq $Config.DefectDojo.TenableWASTestId }
-                            if ($selectedTenableTest) { $script:cmbDDTestTenable.SelectedItem = $selectedTenableTest }
-                        }
                         if ($Config.DefectDojo.SonarQubeTestId) {
                             $selectedSonarTest = $script:cmbDDTestSonar.Items | Where-Object { $_.Id -eq $Config.DefectDojo.SonarQubeTestId }
                             if ($selectedSonarTest) { $script:cmbDDTestSonar.SelectedItem = $selectedSonarTest }
@@ -857,37 +849,86 @@ function Invoke-Automation {
 
 function Process-TenableWAS {
     param([hashtable]$Config)
-    
+
     if (-not $Config.TenableWASSelectedScans -or $Config.TenableWASSelectedScans.Count -eq 0) {
         Write-GuiMessage "No TenableWAS scans selected." 'WARNING'
         return
     }
 
+    # Verify engagement is selected (required for test creation)
+    $engagement = $script:cmbDDEng.SelectedItem
+    if ($Config.Tools.DefectDojo -and -not $engagement) {
+        Write-GuiMessage "No DefectDojo engagement selected; cannot create TenableWAS tests." 'ERROR'
+        return
+    }
+
+    # Get test_type ID (hardcoded for this DefectDojo instance)
+    $tenableTestTypeId = 89  # Test type ID for 'Tenable Scan' parser
+
+    # Retrieve existing tests once for efficiency
+    $existingTests = @()
+    if ($Config.Tools.DefectDojo) {
+        $existingTests = @(Get-DefectDojoTests -EngagementId $engagement.Id)
+    }
+
+    $uploadErrors = 0
+    $totalScans = $Config.TenableWASSelectedScans.Count
+
     foreach ($scan in $Config.TenableWASSelectedScans) {
         Write-GuiMessage "Starting TenableWAS scan export (Scan: $($scan.Name) - ID: $($scan.Id))"
         try {
+            # Step 1: Export scan report
             $exportedFile = Export-TenableWASScan -ScanName $scan.Name
             Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
 
             if ($Config.Tools.DefectDojo) {
-                Write-GuiMessage "Uploading TenableWAS scan report to DefectDojo..."
+                Write-GuiMessage "Processing TenableWAS scan for DefectDojo upload..."
 
-                # Get the specifically selected TenableWAS test
-                $tenableTest = $script:cmbDDTestTenable.SelectedItem
-                if (-not $tenableTest) {
-                    Write-GuiMessage "No TenableWAS test selected for DefectDojo upload" 'WARNING'
-                    return
+                # Step 2: Determine test name
+                $serviceName = "$($scan.Name) (Tenable WAS)"
+
+                # Step 3: Check if test exists
+                $existingTest = $existingTests | Where-Object {
+                    $_.title -in @($serviceName, $scan.Name, "$($scan.Name) (Tenable)")
+                } | Select-Object -First 1
+
+                if (-not $existingTest) {
+                    # Step 4a: Create new test
+                    Write-GuiMessage "Creating new DefectDojo test: $serviceName"
+                    try {
+                        $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType $tenableTestTypeId
+                        Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
+                        $existingTests = @($existingTests) + $newTest  # Add to cache
+                        $testId = $newTest.Id
+                    } catch {
+                        Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
+                        $uploadErrors++
+                        continue  # Skip to next scan
+                    }
+                } else {
+                    # Step 4b: Use existing test
+                    Write-GuiMessage "Using existing DefectDojo test: $($existingTest.Title) (ID: $($existingTest.Id))"
+                    $testId = $existingTest.Id
                 }
 
-                # Ensure file path is explicitly converted to string
+                # Step 5: Upload scan to test
                 $filePathString = ([string]$exportedFile).Trim()
-
-                # Upload directly to the TenableWAS test only
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $tenableTest.Id -ScanType 'Tenable Scan' -CloseOldFindings $true
-                Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $($tenableTest.Name)"
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $true
+                Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $serviceName"
             }
         } catch {
+            $uploadErrors++
             Write-GuiMessage "TenableWAS processing failed for $($scan.Name): $_" 'ERROR'
+        }
+    }
+
+    # Summary reporting
+    if ($Config.Tools.DefectDojo) {
+        if ($uploadErrors -eq 0) {
+            Write-GuiMessage "All $totalScans TenableWAS scans uploaded successfully to DefectDojo"
+        } else {
+            $successCount = $totalScans - $uploadErrors
+            Write-GuiMessage "TenableWAS upload completed: $successCount successful, $uploadErrors failed" 'WARNING'
         }
     }
 }
@@ -1195,7 +1236,6 @@ function Save-DefectDojoConfig {
         Product         = $script:cmbDDProduct.SelectedItem
         Engagement      = $script:cmbDDEng.SelectedItem
         ApiScanConfig   = $script:cmbDDApiScan.SelectedItem
-        TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
         SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
         BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
         GitHubDependabotTest = $script:cmbDDTestDependabot.SelectedItem
@@ -1207,7 +1247,6 @@ function Save-DefectDojoConfig {
     # Validate that all necessary selections have been made
     $incomplete = $false
     if (-not $selections.Product -or -not $selections.Engagement) { $incomplete = $true }
-    if ($Config.Tools.TenableWAS -and -not $selections.TenableWASTest) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
     if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
     if ($dependabotEnabled -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
@@ -1222,7 +1261,6 @@ function Save-DefectDojoConfig {
         ProductId         = $selections.Product.Id
         EngagementId      = $selections.Engagement.Id
         APIScanConfigId   = $selections.ApiScanConfig.Id
-        TenableWASTestId  = $selections.TenableWASTest.Id
         SonarQubeTestId   = $selections.SonarQubeTest.Id
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
         GitHubDependabotTestId = $selections.GitHubDependabotTest.Id

@@ -114,6 +114,416 @@ Describe 'Export-TenableWASScan (Unit)' {
     }
 }
 
+Describe 'Process-TenableWAS (Unit)' {
+    BeforeAll {
+        # Load all required modules for Process-TenableWAS testing
+        . (Join-Path $Global:TenableWasModuleDir 'Config.ps1')
+        . (Join-Path $Global:TenableWasModuleDir 'Logging.ps1')
+        . (Join-Path $Global:TenableWasModuleDir 'TenableWAS.ps1')
+        . (Join-Path $PSScriptRoot '../modules/DefectDojo.ps1')
+        . (Join-Path $PSScriptRoot '../modules/Uploader.ps1')
+
+        # Load Launch.ps1 to get Process-TenableWAS function
+        # We need to suppress the GUI initialization and just load the functions
+        $script:SkipGuiInit = $true
+
+        # Define Write-GuiMessage stub before loading Launch.ps1 to avoid GUI dependencies
+        if (-not (Get-Command Write-GuiMessage -ErrorAction SilentlyContinue)) {
+            function global:Write-GuiMessage {
+                param([string]$Message, [string]$Level = 'INFO')
+                Write-Log -Message $Message -Level $Level
+            }
+        }
+
+        # Source the Launch.ps1 to get Process-TenableWAS, but we need to handle the GUI initialization
+        # Extract just the function definition instead of running the entire script
+        $launchScript = Get-Content (Join-Path $PSScriptRoot '../Launch.ps1') -Raw
+
+        # Extract Process-TenableWAS function from Launch.ps1
+        $functionPattern = '(?s)function Process-TenableWAS\s*\{.*?\n\}\s*(?=\n\s*function|\n\s*#|$)'
+        if ($launchScript -match $functionPattern) {
+            $functionDef = $Matches[0]
+            Invoke-Expression $functionDef
+        }
+
+        Initialize-Log -LogDirectory (Join-Path $TestDrive 'logs') -LogFileName 'process-tenablewas.log' -Overwrite
+
+        # Set up environment for testing
+        $env:TENWAS_ACCESS_KEY = 'test-key'
+        $env:TENWAS_SECRET_KEY = 'test-secret'
+        $env:DOJO_API_KEY = 'test-dojo-key'
+    }
+
+    AfterAll {
+        if ($null -ne $Global:OriginalTenwasAccessKey) {
+            $env:TENWAS_ACCESS_KEY = $Global:OriginalTenwasAccessKey
+        } else {
+            Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
+        }
+
+        if ($null -ne $Global:OriginalTenwasSecretKey) {
+            $env:TENWAS_SECRET_KEY = $Global:OriginalTenwasSecretKey
+        } else {
+            Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
+        }
+    }
+
+    Context 'When no scans are selected' {
+        It 'Returns early with warning message' {
+            Mock Write-GuiMessage { }
+
+            $config = @{
+                TenableWASSelectedScans = @()
+                Tools = @{ DefectDojo = $true }
+            }
+
+            # Should not throw, just log warning
+            { Process-TenableWAS -Config $config } | Should -Not -Throw
+
+            # Verify warning was logged
+            Should -Invoke Write-GuiMessage -ParameterFilter { $Level -eq 'WARNING' -and $Message -match 'No TenableWAS scans selected' }
+        }
+    }
+
+    Context 'When no DefectDojo engagement is selected' {
+        It 'Returns early with error message' {
+            Mock Write-GuiMessage { }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Test Scan'; Id = 'scan-1' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            # Create mock cmbDDEng with no selection
+            $script:cmbDDEng = [PSCustomObject]@{ SelectedItem = $null }
+
+            # Should not throw, just log error
+            { Process-TenableWAS -Config $config } | Should -Not -Throw
+
+            # Verify error was logged
+            Should -Invoke Write-GuiMessage -ParameterFilter { $Level -eq 'ERROR' -and $Message -match 'No DefectDojo engagement selected' }
+        }
+    }
+
+    Context 'When processing single scan with new test creation' {
+        It 'Creates new test and uploads scan successfully' {
+            Mock Write-GuiMessage { }
+            Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
+            Mock Get-DefectDojoTests { return @() }  # No existing tests
+            Mock New-DefectDojoTest {
+                return [PSCustomObject]@{ Id = 100; Name = $TestName }
+            }
+            Mock Upload-DefectDojoScan { }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Production Scan'; Id = 'scan-123' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            $script:cmbDDEng = [PSCustomObject]@{
+                SelectedItem = [PSCustomObject]@{ Id = 10; Name = 'Test Engagement' }
+            }
+
+            Process-TenableWAS -Config $config
+
+            # Verify export was called
+            Should -Invoke Export-TenableWASScan -Times 1 -ParameterFilter { $ScanName -eq 'Production Scan' }
+
+            # Verify test creation was called with correct parameters
+            Should -Invoke New-DefectDojoTest -Times 1 -ParameterFilter {
+                $EngagementId -eq 10 -and
+                $TestName -eq 'Production Scan (Tenable WAS)' -and
+                $TestType -eq 89
+            }
+
+            # Verify upload was called
+            Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter {
+                $TestId -eq 100 -and
+                $ScanType -eq 'Tenable Scan'
+            }
+
+            # Verify success message
+            Should -Invoke Write-GuiMessage -ParameterFilter { $Message -match 'All 1 TenableWAS scans uploaded successfully' }
+        }
+    }
+
+    Context 'When processing scan with existing test (exact match)' {
+        It 'Reuses existing test instead of creating new one' {
+            Mock Write-GuiMessage { }
+            Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
+            Mock Get-DefectDojoTests {
+                return @(
+                    [PSCustomObject]@{
+                        id = 50
+                        title = 'Production Scan (Tenable WAS)'
+                        test_type_name = 'Tenable Scan'
+                    }
+                )
+            }
+            Mock New-DefectDojoTest { throw 'Should not be called' }
+            Mock Upload-DefectDojoScan { }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Production Scan'; Id = 'scan-123' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            $script:cmbDDEng = [PSCustomObject]@{
+                SelectedItem = [PSCustomObject]@{ Id = 10; Name = 'Test Engagement' }
+            }
+
+            Process-TenableWAS -Config $config
+
+            # Verify export was called
+            Should -Invoke Export-TenableWASScan -Times 1
+
+            # Verify test creation was NOT called
+            Should -Invoke New-DefectDojoTest -Times 0
+
+            # Verify upload used existing test ID
+            Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter { $TestId -eq 50 }
+
+            # Verify message indicates existing test was used
+            Should -Invoke Write-GuiMessage -ParameterFilter { $Message -match 'Using existing DefectDojo test' }
+        }
+    }
+
+    Context 'When processing scan with existing test (legacy name match)' {
+        It 'Matches test with scan name only (backward compatibility)' {
+            Mock Write-GuiMessage { }
+            Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
+            Mock Get-DefectDojoTests {
+                return @(
+                    [PSCustomObject]@{
+                        id = 75
+                        title = 'Production Scan'  # Legacy naming without suffix
+                        test_type_name = 'Tenable Scan'
+                    }
+                )
+            }
+            Mock New-DefectDojoTest { throw 'Should not be called' }
+            Mock Upload-DefectDojoScan { }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Production Scan'; Id = 'scan-123' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            $script:cmbDDEng = [PSCustomObject]@{
+                SelectedItem = [PSCustomObject]@{ Id = 10; Name = 'Test Engagement' }
+            }
+
+            Process-TenableWAS -Config $config
+
+            # Verify test creation was NOT called (matched legacy name)
+            Should -Invoke New-DefectDojoTest -Times 0
+
+            # Verify upload used existing test ID
+            Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter { $TestId -eq 75 }
+        }
+    }
+
+    Context 'When processing multiple scans' {
+        It 'Creates/uses separate test for each scan' {
+            Mock Write-GuiMessage { }
+            Mock Export-TenableWASScan {
+                param($ScanName)
+                return "C:\Temp\$ScanName.csv"
+            }
+            Mock Get-DefectDojoTests {
+                return @(
+                    [PSCustomObject]@{ id = 60; title = 'Scan A (Tenable WAS)' }
+                )
+            }
+            Mock New-DefectDojoTest {
+                return [PSCustomObject]@{ Id = 101; Name = $TestName }
+            }
+            Mock Upload-DefectDojoScan { }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Scan A'; Id = 'scan-a' },
+                    @{ Name = 'Scan B'; Id = 'scan-b' },
+                    @{ Name = 'Scan C'; Id = 'scan-c' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            $script:cmbDDEng = [PSCustomObject]@{
+                SelectedItem = [PSCustomObject]@{ Id = 10; Name = 'Test Engagement' }
+            }
+
+            Process-TenableWAS -Config $config
+
+            # Verify each scan was exported
+            Should -Invoke Export-TenableWASScan -Times 3
+
+            # Verify Scan A used existing test (no creation)
+            # Verify Scan B and C created new tests
+            Should -Invoke New-DefectDojoTest -Times 2
+
+            # Verify all scans were uploaded
+            Should -Invoke Upload-DefectDojoScan -Times 3
+
+            # Verify success message shows all 3 scans
+            Should -Invoke Write-GuiMessage -ParameterFilter { $Message -match 'All 3 TenableWAS scans uploaded successfully' }
+        }
+    }
+
+    Context 'When test creation fails' {
+        It 'Logs error and continues to next scan' {
+            Mock Write-GuiMessage { }
+            Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
+            Mock Get-DefectDojoTests { return @() }
+            Mock New-DefectDojoTest { throw 'API Error: Test creation failed' }
+            Mock Upload-DefectDojoScan { }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Scan 1'; Id = 'scan-1' },
+                    @{ Name = 'Scan 2'; Id = 'scan-2' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            $script:cmbDDEng = [PSCustomObject]@{
+                SelectedItem = [PSCustomObject]@{ Id = 10; Name = 'Test Engagement' }
+            }
+
+            Process-TenableWAS -Config $config
+
+            # Verify both scans were attempted
+            Should -Invoke Export-TenableWASScan -Times 2
+            Should -Invoke New-DefectDojoTest -Times 2
+
+            # Verify no uploads occurred (test creation failed)
+            Should -Invoke Upload-DefectDojoScan -Times 0
+
+            # Verify error summary
+            Should -Invoke Write-GuiMessage -ParameterFilter {
+                $Level -eq 'WARNING' -and $Message -match '0 successful, 2 failed'
+            }
+        }
+    }
+
+    Context 'When scan export fails' {
+        It 'Logs error and continues to next scan' {
+            Mock Write-GuiMessage { }
+            # Make Export fail only for 'Failing Scan', succeed for 'Working Scan'
+            Mock Export-TenableWASScan {
+                param($ScanName)
+                if ($ScanName -eq 'Failing Scan') {
+                    throw 'API Error: Export failed'
+                }
+                return 'C:\Temp\Working Scan.csv'
+            }
+            Mock Get-DefectDojoTests { return @() }
+            Mock New-DefectDojoTest { return [PSCustomObject]@{ Id = 100; Name = $TestName } }
+            Mock Upload-DefectDojoScan { }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Failing Scan'; Id = 'scan-fail' },
+                    @{ Name = 'Working Scan'; Id = 'scan-ok' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            $script:cmbDDEng = [PSCustomObject]@{
+                SelectedItem = [PSCustomObject]@{ Id = 10; Name = 'Test Engagement' }
+            }
+
+            # Should complete without throwing
+            { Process-TenableWAS -Config $config } | Should -Not -Throw
+
+            # Verify export was attempted for both scans
+            Should -Invoke Export-TenableWASScan -Times 2
+
+            # Verify error message for failed scan
+            Should -Invoke Write-GuiMessage -ParameterFilter {
+                $Level -eq 'ERROR' -and $Message -match 'TenableWAS processing failed for Failing Scan'
+            }
+
+            # Verify summary shows partial success
+            Should -Invoke Write-GuiMessage -ParameterFilter {
+                $Level -eq 'WARNING' -and $Message -match '1 successful, 1 failed'
+            }
+        }
+    }
+
+    Context 'When upload fails' {
+        It 'Logs error and continues to next scan' {
+            Mock Write-GuiMessage { }
+            Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
+            Mock Get-DefectDojoTests { return @() }
+            Mock New-DefectDojoTest { return [PSCustomObject]@{ Id = 100; Name = $TestName } }
+            Mock Upload-DefectDojoScan { throw 'API Error: Upload failed' }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Scan 1'; Id = 'scan-1' }
+                )
+                Tools = @{ DefectDojo = $true }
+            }
+
+            $script:cmbDDEng = [PSCustomObject]@{
+                SelectedItem = [PSCustomObject]@{ Id = 10; Name = 'Test Engagement' }
+            }
+
+            # Should complete without throwing
+            { Process-TenableWAS -Config $config } | Should -Not -Throw
+
+            # Verify error was logged
+            Should -Invoke Write-GuiMessage -ParameterFilter {
+                $Level -eq 'ERROR' -and $Message -match 'TenableWAS processing failed'
+            }
+
+            # Verify error summary
+            Should -Invoke Write-GuiMessage -ParameterFilter {
+                $Level -eq 'WARNING' -and $Message -match '0 successful, 1 failed'
+            }
+        }
+    }
+
+    Context 'When DefectDojo is disabled' {
+        It 'Only exports scans without uploading' {
+            Mock Write-GuiMessage { }
+            Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
+            Mock Get-DefectDojoTests { throw 'Should not be called' }
+            Mock New-DefectDojoTest { throw 'Should not be called' }
+            Mock Upload-DefectDojoScan { throw 'Should not be called' }
+
+            $config = @{
+                TenableWASSelectedScans = @(
+                    @{ Name = 'Scan 1'; Id = 'scan-1' }
+                )
+                Tools = @{ DefectDojo = $false }  # DefectDojo disabled
+            }
+
+            Process-TenableWAS -Config $config
+
+            # Verify export was called
+            Should -Invoke Export-TenableWASScan -Times 1
+
+            # Verify DefectDojo functions were not called
+            Should -Invoke Get-DefectDojoTests -Times 0
+            Should -Invoke New-DefectDojoTest -Times 0
+            Should -Invoke Upload-DefectDojoScan -Times 0
+
+            # Should not have DefectDojo-specific success message
+            Should -Invoke Write-GuiMessage -ParameterFilter { $Message -match 'uploaded successfully to DefectDojo' } -Times 0
+        }
+    }
+}
+
 Describe 'Get-TenableWASScanConfigs (Unit)' {
     BeforeAll {
         . (Join-Path $Global:TenableWasModuleDir 'Config.ps1')
