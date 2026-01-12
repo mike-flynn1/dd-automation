@@ -185,3 +185,58 @@ Describe 'Get-DefectDojoTests (Integration)' {
         $items[0].Title | Should -Be 'Integration Suite Alpha'
     }
 }
+
+Describe 'Get-DefectDojoTestType' {
+    Context 'When test type exists' {
+        BeforeAll {
+            Mock Get-Config { return @{ ApiBaseUrls = @{ DefectDojo = 'https://example.com/api' } } }
+            $env:DOJO_API_KEY = 'dummy-key'
+            Mock Invoke-RestMethod {
+                return @{ 
+                    results = @( 
+                        @{ id = 89; name = 'Tenable Scan' },
+                        @{ id = 123; name = 'SARIF' }
+                    ) 
+                }
+            }
+        }
+        It 'Returns test type ID for exact name match' {
+            $id = Get-DefectDojoTestType -TestTypeName 'Tenable Scan'
+            $id | Should -Be 89
+        }
+        It 'Handles case-insensitive matching' {
+            $id = Get-DefectDojoTestType -TestTypeName 'tenable scan'
+            $id | Should -Be 89
+        }
+    }
+
+    Context 'When test type does not exist' {
+        BeforeAll {
+            Mock Get-Config { return @{ ApiBaseUrls = @{ DefectDojo = 'https://example.com/api' } } }
+            $env:DOJO_API_KEY = 'dummy-key'
+            Mock Invoke-RestMethod {
+                return @{ results = @() }
+            }
+        }
+        It 'Throws error with helpful message' {
+            { Get-DefectDojoTestType -TestTypeName 'NonExistent Scan' } | 
+                Should -Throw -ExpectedMessage "*not found*"
+        }
+    }
+
+    Context 'When DOJO_API_KEY is missing' {
+        BeforeAll {
+            $script:SavedKey = $env:DOJO_API_KEY
+            Remove-Item Env:DOJO_API_KEY -ErrorAction SilentlyContinue
+        }
+        AfterAll {
+            if ($null -ne $script:SavedKey) {
+                $env:DOJO_API_KEY = $script:SavedKey
+            }
+        }
+        It 'Throws error about missing API key' {
+            { Get-DefectDojoTestType -TestTypeName 'Tenable Scan' } | 
+                Should -Throw -ExpectedMessage "*Missing DefectDojo API key*"
+        }
+    }
+}

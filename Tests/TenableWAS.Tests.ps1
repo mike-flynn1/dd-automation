@@ -212,6 +212,11 @@ Describe 'Process-TenableWAS (Unit)' {
             Mock Write-GuiMessage { }
             Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
             Mock Get-DefectDojoTests { return @() }  # No existing tests
+            Mock Get-DefectDojoTestType {
+                param($TestTypeName)
+                if ($TestTypeName -eq 'Tenable Scan') { return 89 }
+                throw "Unknown test type: $TestTypeName"
+            }
             Mock New-DefectDojoTest {
                 return [PSCustomObject]@{ Id = 100; Name = $TestName }
             }
@@ -232,6 +237,11 @@ Describe 'Process-TenableWAS (Unit)' {
 
             # Verify export was called
             Should -Invoke Export-TenableWASScan -Times 1 -ParameterFilter { $ScanName -eq 'Production Scan' }
+
+            # Verify test type lookup was called
+            Should -Invoke Get-DefectDojoTestType -Times 1 -ParameterFilter {
+                $TestTypeName -eq 'Tenable Scan'
+            }
 
             # Verify test creation was called with correct parameters
             Should -Invoke New-DefectDojoTest -Times 1 -ParameterFilter {
@@ -263,6 +273,11 @@ Describe 'Process-TenableWAS (Unit)' {
                         test_type_name = 'Tenable Scan'
                     }
                 )
+            }
+            Mock Get-DefectDojoTestType {
+                param($TestTypeName)
+                if ($TestTypeName -eq 'Tenable Scan') { return 89 }
+                throw "Unknown test type: $TestTypeName"
             }
             Mock New-DefectDojoTest { throw 'Should not be called' }
             Mock Upload-DefectDojoScan { }
@@ -307,6 +322,11 @@ Describe 'Process-TenableWAS (Unit)' {
                     }
                 )
             }
+            Mock Get-DefectDojoTestType {
+                param($TestTypeName)
+                if ($TestTypeName -eq 'Tenable Scan') { return 89 }
+                throw "Unknown test type: $TestTypeName"
+            }
             Mock New-DefectDojoTest { throw 'Should not be called' }
             Mock Upload-DefectDojoScan { }
 
@@ -342,6 +362,11 @@ Describe 'Process-TenableWAS (Unit)' {
                 return @(
                     [PSCustomObject]@{ id = 60; title = 'Scan A (Tenable WAS)' }
                 )
+            }
+            Mock Get-DefectDojoTestType {
+                param($TestTypeName)
+                if ($TestTypeName -eq 'Tenable Scan') { return 89 }
+                throw "Unknown test type: $TestTypeName"
             }
             Mock New-DefectDojoTest {
                 return [PSCustomObject]@{ Id = 101; Name = $TestName }
@@ -383,6 +408,11 @@ Describe 'Process-TenableWAS (Unit)' {
             Mock Write-GuiMessage { }
             Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
             Mock Get-DefectDojoTests { return @() }
+            Mock Get-DefectDojoTestType {
+                param($TestTypeName)
+                if ($TestTypeName -eq 'Tenable Scan') { return 89 }
+                throw "Unknown test type: $TestTypeName"
+            }
             Mock New-DefectDojoTest { throw 'API Error: Test creation failed' }
             Mock Upload-DefectDojoScan { }
 
@@ -426,6 +456,11 @@ Describe 'Process-TenableWAS (Unit)' {
                 return 'C:\Temp\Working Scan.csv'
             }
             Mock Get-DefectDojoTests { return @() }
+            Mock Get-DefectDojoTestType {
+                param($TestTypeName)
+                if ($TestTypeName -eq 'Tenable Scan') { return 89 }
+                throw "Unknown test type: $TestTypeName"
+            }
             Mock New-DefectDojoTest { return [PSCustomObject]@{ Id = 100; Name = $TestName } }
             Mock Upload-DefectDojoScan { }
 
@@ -464,6 +499,11 @@ Describe 'Process-TenableWAS (Unit)' {
             Mock Write-GuiMessage { }
             Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
             Mock Get-DefectDojoTests { return @() }
+            Mock Get-DefectDojoTestType {
+                param($TestTypeName)
+                if ($TestTypeName -eq 'Tenable Scan') { return 89 }
+                throw "Unknown test type: $TestTypeName"
+            }
             Mock New-DefectDojoTest { return [PSCustomObject]@{ Id = 100; Name = $TestName } }
             Mock Upload-DefectDojoScan { throw 'API Error: Upload failed' }
 
@@ -498,6 +538,7 @@ Describe 'Process-TenableWAS (Unit)' {
             Mock Write-GuiMessage { }
             Mock Export-TenableWASScan { return 'C:\Temp\test-scan.csv' }
             Mock Get-DefectDojoTests { throw 'Should not be called' }
+            Mock Get-DefectDojoTestType { throw 'Should not be called' }
             Mock New-DefectDojoTest { throw 'Should not be called' }
             Mock Upload-DefectDojoScan { throw 'Should not be called' }
 

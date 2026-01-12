@@ -158,19 +158,68 @@ function Get-DefectDojoApiScanConfigurations {
     return $response.results | Select-Object @{Name='Id';Expression={$_.id}}, @{Name='Name';Expression={$_.service_key_1}}
 }
 
+function Get-DefectDojoTestType {
+    <#
+    .SYNOPSIS
+        Retrieves a DefectDojo test type ID by name.
+    .DESCRIPTION
+        Calls the DefectDojo API /api/v2/test_types/ endpoint to find a test type by name.
+        Returns the test type ID if found, throws an error if not found.
+    .PARAMETER TestTypeName
+        The name of the test type (e.g., 'Tenable Scan', 'SARIF', 'Burp Scan').
+    .OUTPUTS
+        Integer test type ID.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TestTypeName
+    )
+
+    $config = Get-Config
+    $baseUrl = $config.ApiBaseUrls.DefectDojo.TrimEnd('/')
+    $apiKey = [Environment]::GetEnvironmentVariable('DOJO_API_KEY')
+    if (-not $apiKey) {
+        Throw 'Missing DefectDojo API key (DOJO_API_KEY).'
+    }
+    $headers = @{ Authorization = "Token $apiKey" }
+    # Use name filter to search for exact match
+    $encodedName = [System.Web.HttpUtility]::UrlEncode($TestTypeName)
+    $uri = "$baseUrl/test_types/?name=$encodedName&limit=100"
+
+    Write-Log -Message "Looking up DefectDojo test type: $TestTypeName" -Level 'INFO'
+    try {
+        $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -UseBasicParsing
+        
+        # Find exact match (case-insensitive)
+        $testType = $response.results | Where-Object { $_.name -eq $TestTypeName } | Select-Object -First 1
+        
+        if (-not $testType) {
+            throw "Test type '$TestTypeName' not found in DefectDojo. Available test types can be found at: $baseUrl/test_types/"
+        }
+        
+        Write-Log -Message "Found test type '$TestTypeName' with ID: $($testType.id)" -Level 'INFO'
+        return $testType.id
+    } catch {
+        Write-Log -Message "Failed to lookup test type '$TestTypeName': $_" -Level 'ERROR'
+        throw $_
+    }
+}
+
 function New-DefectDojoTest {
     <#
     .SYNOPSIS
         Creates a new DefectDojo test.
     .DESCRIPTION
         Calls the DefectDojo API /api/v2/tests/ endpoint to create a new test
-        and returns the created test object.
+        and returns the created test object. Can accept either a test type ID or name.
     .PARAMETER EngagementId
         The Id of the DefectDojo engagement to create the test under.
     .PARAMETER TestName
         The name for the new test.
     .PARAMETER TestType
-        The test type (e.g., "SARIF", "SonarQube Scan", etc.).
+        The test type ID (integer) or name (string) (e.g., 89, "SARIF", "Tenable Scan", etc.).
+        If a string name is provided, it will be automatically looked up via the API.
     .OUTPUTS
         PSCustomObject with properties Id and Name.
     #>
@@ -183,8 +232,19 @@ function New-DefectDojoTest {
         [string]$TestName,
 
         [Parameter(Mandatory = $true)]
-        [string]$TestType
+        $TestType  # Can be int or string
     )
+
+    # If TestType is a string (test type name), look up the ID
+    if ($TestType -is [string]) {
+        try {
+            $testTypeId = Get-DefectDojoTestType -TestTypeName $TestType
+        } catch {
+            throw "Failed to resolve test type '$TestType': $_"
+        }
+    } else {
+        $testTypeId = $TestType
+    }
 
     $config = Get-Config
     $baseUrl = $config.ApiBaseUrls.DefectDojo.TrimEnd('/')
@@ -202,7 +262,7 @@ function New-DefectDojoTest {
         engagement = $EngagementId
         title = $TestName
         #environment = 1
-        test_type = $TestType
+        test_type = $testTypeId
         target_start = (Get-Date).ToString("yyyy-MM-dd")
         target_end = (Get-Date).ToString("yyyy-MM-dd")
     } | ConvertTo-Json

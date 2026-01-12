@@ -855,19 +855,26 @@ function Process-TenableWAS {
         return
     }
 
-    # Verify engagement is selected (required for test creation)
-    $engagement = $script:cmbDDEng.SelectedItem
-    if ($Config.Tools.DefectDojo -and -not $engagement) {
-        Write-GuiMessage "No DefectDojo engagement selected; cannot create TenableWAS tests." 'ERROR'
-        return
-    }
-
-    # Get test_type ID (hardcoded for this DefectDojo instance)
-    $tenableTestTypeId = 89  # Test type ID for 'Tenable Scan' parser
-
-    # Retrieve existing tests once for efficiency
-    $existingTests = @()
+    # Initialize DefectDojo-specific variables if DefectDojo is enabled
     if ($Config.Tools.DefectDojo) {
+        # Verify engagement is selected (required for test creation)
+        $engagement = $script:cmbDDEng.SelectedItem
+        if (-not $engagement) {
+            Write-GuiMessage "No DefectDojo engagement selected; cannot create TenableWAS tests." 'ERROR'
+            return
+        }
+
+        # Get test_type ID dynamically by looking up 'Tenable Scan' parser name
+        # This ensures compatibility across different DefectDojo instances where test type IDs may differ
+        try {
+            $tenableTestTypeId = Get-DefectDojoTestType -TestTypeName 'Tenable Scan'
+            Write-GuiMessage "Resolved 'Tenable Scan' test type to ID: $tenableTestTypeId"
+        } catch {
+            Write-GuiMessage "Failed to lookup 'Tenable Scan' test type: $_" 'ERROR'
+            return
+        }
+
+        # Retrieve existing tests once for efficiency
         $existingTests = @(Get-DefectDojoTests -EngagementId $engagement.Id)
     }
 
@@ -901,7 +908,8 @@ function Process-TenableWAS {
                         $existingTests = @($existingTests) + $newTest  # Add to cache
                         $testId = $newTest.Id
                     } catch {
-                        Write-GuiMessage "Failed to create test $serviceName: $_" 'ERROR'
+                        $errorMsg = $_.Exception.Message
+                        Write-GuiMessage "Failed to create test ${serviceName}: $errorMsg" 'ERROR'
                         $uploadErrors++
                         continue  # Skip to next scan
                     }
