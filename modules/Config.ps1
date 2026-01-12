@@ -181,7 +181,8 @@ function Save-Config {
         if ($null -ne $scanNames -and $scanNames.Count -gt 0) {
             $sb.AppendLine('    TenableWASScanNames = @(') | Out-Null
             foreach ($name in $scanNames) {
-                $sb.AppendLine("        '$name'") | Out-Null
+                $escapedName = $name -replace "'","''"
+                $sb.AppendLine("        '$escapedName'") | Out-Null
             }
             $sb.AppendLine('    )') | Out-Null
         } else {
