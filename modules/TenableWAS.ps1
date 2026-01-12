@@ -88,8 +88,15 @@ function Export-TenableWASScan {
     Write-Log -Message "Downloading report for Tenable WAS scan ID $ScanId" -Level 'INFO'
     $tempPath = [System.IO.Path]::GetTempPath()
     
-    # Use scan name for filename
-    $fileName = "$ScanName.csv"
+    # Use a sanitized version of the scan name for the filename to prevent path traversal
+    $invalidFileNameChars = [System.IO.Path]::GetInvalidFileNameChars()
+    $safeScanName = -join ($ScanName.ToCharArray() | ForEach-Object {
+        if ($invalidFileNameChars -contains $_) { '_' } else { $_ }
+    })
+    if (-not $safeScanName) {
+        $safeScanName = 'scan'
+    }
+    $fileName = "$safeScanName.csv"
     $outFile = Join-Path -Path $tempPath -ChildPath $fileName
 
     $headers = @{ 
