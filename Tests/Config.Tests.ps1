@@ -37,3 +37,85 @@ Describe 'Validate-Config' {
         { Validate-Config -Config $badConfig } | Should -Throw
     }
 }
+
+Describe 'Save-Config' {
+    BeforeEach {
+        $script:tempConfigPath = Join-Path $TestDrive 'test-config.psd1'
+    }
+
+    Context 'When saving TenableWASScanNames configuration' {
+        It 'Saves array of scan names correctly' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                TenableWASScanNames = @('Scan One', 'Scan Two', 'Scan Three')
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Match "TenableWASScanNames = @\("
+            $savedContent | Should -Match "'Scan One'"
+            $savedContent | Should -Match "'Scan Two'"
+            $savedContent | Should -Match "'Scan Three'"
+        }
+
+        It 'Saves empty array when no scan names are provided' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                TenableWASScanNames = @()
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Match "TenableWASScanNames = @\(\)"
+        }
+
+        It 'Saves empty array when scan names are null' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                TenableWASScanNames = $null
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Match "TenableWASScanNames = @\(\)"
+        }
+
+        It 'Handles scan names with special characters' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                TenableWASScanNames = @("Scan's Name", 'Scan "With" Quotes')
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Match "TenableWASScanNames = @\("
+        }
+    }
+
+    Context 'When TenableWASScanNames key is not present' {
+        It 'Does not include TenableWASScanNames in output' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Not -Match "TenableWASScanNames"
+        }
+    }
+}

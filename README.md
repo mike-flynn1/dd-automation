@@ -108,19 +108,26 @@ Tools = @{
 The Tenable WAS (Web Application Scanning) integration exports vulnerability scan results from Tenable's cloud-based platform and optionally uploads them to DefectDojo for centralized vulnerability management.
 
 ### Features
-- **Automated Report Generation**: Initiates report generation via Tenable WAS API for a specified scan
+- **Live Scan List with Search**: Retrieves all available scan configurations from Tenable WAS API with interactive search/filter capabilities
+- **Scan Name-Based Selection**: Select scans by their display name instead of manually entering GUIDs
+- **Batch Processing**: Process multiple scans in a single run by selecting multiple scan names
 - **CSV Export**: Downloads scan results in CSV format suitable for DefectDojo import
 - **Direct DefectDojo Upload**: Automatically uploads exported scan reports to a designated DefectDojo test when DefectDojo integration is enabled
-- **Configurable Scan Selection**: Supports scan ID specification via GUI input or configuration file
 
 ### How It Works
-1. When the Tenable WAS checkbox is selected in the GUI, the user must provide a Scan ID from the Tenable WAS website (GUID format)
-2. The tool makes a two-step API request to Tenable WAS:
-   - **PUT request** to `/was/v2/scans/{scanId}/report` to initiate report generation
-   - **GET request** to the same endpoint (after 2-second delay) to download the generated CSV report
-3. The CSV file is temporarily saved to the system temp directory with naming convention: `{scanId}-report.csv`
+1. When the Tenable WAS checkbox is selected in the GUI, the tool automatically loads all available scans from the Tenable WAS API
+2. Scans are displayed in a searchable, multi-select checklist with:
+   - **Search box**: Filter scans by name in real-time
+   - **Refresh button**: Reload scan list from API
+   - **Checkbox selection**: Select one or more scans to process
+3. For each selected scan, the tool:
+   - Looks up the most recent scan ID from the scan configuration (using `last_scan.scan_id`)
+   - Makes a two-step API request to Tenable WAS:
+     - **PUT request** to `/was/v2/scans/{scanId}/report` to initiate report generation
+     - **GET request** to the same endpoint (after 2-second delay) to download the generated CSV report
+   - Saves the CSV file temporarily with naming convention: `{scanName}.csv`
 4. If the DefectDojo checkbox is also selected:
-   - The tool uploads the CSV report to the specifically selected Tenable WAS test in DefectDojo
+   - The tool uploads each CSV report to individual tests in DefectDojo
    - Uses the "Tenable Scan" scan type for proper parsing by DefectDojo
    - Upload is performed via DefectDojo's `/reimport-scan/` endpoint
 
@@ -136,30 +143,64 @@ ApiBaseUrls = @{
     TenableWAS = 'https://fedcloud.tenable.com/'  # Tenable cloud endpoint
 }
 
-TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'  # Optional: Default scan ID
+# Optional: Pre-select scans by name (persisted from GUI selections)
+TenableWASScanNames = @(
+    'Production Web App Scan'
+    'Staging Environment Scan'
+    'API Security Scan'
+)
 
 DefectDojo = @{
     TenableWASTestId = 123  # Optional: Pre-selected test ID for uploads
 }
 ```
 
+**Deprecated Configuration**:
+```powershell
+# DEPRECATED: Old single-scan ID method (still supported but not recommended)
+TenableWASScanId = '0a514d9e-7e2f-4bd5-9e22-e5044e94bc77'
+```
+
 **GUI Inputs**:
-- **Tenable WAS Scan ID**: Required field in the GUI to specify which scan to export
-- **DD Test (Tenable WAS)**: Dropdown to select the specific DefectDojo test for upload (populated from selected engagement)
+- **Tenable WAS Checkbox**: Enable Tenable WAS processing
+- **Scan Selection List**: Multi-select checklist populated from API (automatically loads when checkbox is checked)
+- **Search Box**: Filter scans by name (wildcards supported)
+- **Refresh Button**: Reload scan list from Tenable WAS API
 
 ### File Locations
-- **Exported Reports**: `%TEMP%\{scanId}-report.csv` (Windows temporary directory)
-- **API Endpoint**: `https://fedcloud.tenable.com/was/v2/scans/{scanId}/report`
+- **Exported Reports**: `%TEMP%\{scanName}.csv` (Windows temporary directory)
+- **API Endpoints**:
+  - Scan list: `https://fedcloud.tenable.com/was/v2/configs/search`
+  - Report generation: `https://fedcloud.tenable.com/was/v2/scans/{scanId}/report`
 
-### Finding Scan IDs
-Tenable WAS Scan IDs can be found in the Tenable.io web interface:
-1. Navigate to Tenable.io > Web Application Scanning
-2. Select your scan from the list
-3. The Scan ID (GUID format) appears in the URL
+### Scan Selection Details
+The scan list automatically filters to show only:
+- **Active scans** (not in trash)
+- **Completed scans** (must have `last_scan.scan_id`)
+- **Sorted alphabetically** by scan name
+
+The list uses pagination to handle large environments (200 scans per page) and implements duplicate detection for API inconsistencies.
+
+### Workflow Improvements vs Legacy Method
+
+**New Method (Scan Name-Based)**:
+1. Check Tenable WAS checkbox
+2. Scans load automatically (or click Refresh)
+3. Search/filter by name if needed
+4. Check one or more scans
+5. Click "Go" to process all selected scans
+
+**Legacy Method (Scan ID-Based - Deprecated)**:
+1. Log into Tenable.io web interface
+2. Navigate to scan details
+3. Copy GUID from URL
+4. Paste GUID into config file
+5. Repeat for each scan
+
+The scan name method eliminates manual GUID management and enables batch processing of multiple scans.
 
 ### Limitations
-- Only exports completed scans (cannot export in-progress scans)
-- Scan ID must be manually specified for each export (no automatic scan list retrieval yet)
+- Only exports completed scans (scans without `last_scan.scan_id` are automatically filtered out)
 
 ## SonarQube Integration
 

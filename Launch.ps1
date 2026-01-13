@@ -133,7 +133,7 @@ function Initialize-GuiElements {
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(640, 820)
+    $form.Size = New-Object System.Drawing.Size(640, 900)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
@@ -165,7 +165,7 @@ function Initialize-GuiElements {
         
         # Add tooltips for each checkbox
         switch ($name) {
-            'TenableWAS' { $script:toolTip.SetToolTip($chk, "This checkbox downloads the specified Tenable scan to the Temp Directory specified in the log file.") }
+            'TenableWAS' { $script:toolTip.SetToolTip($chk, "Downloads selected Tenable WAS scans and uploads to DefectDojo. Each scan creates/updates its own test.") }
             'SonarQube' { $script:toolTip.SetToolTip($chk, "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo") }
             'BurpSuite' { $script:toolTip.SetToolTip($chk, "Scans the specified folder for BurpSuite XML reports and uploads them to DefectDojo.") }
             'DefectDojo' { $script:toolTip.SetToolTip($chk, "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload.") }
@@ -191,14 +191,24 @@ function Initialize-GuiElements {
     $form.Controls.AddRange(@($lblBurp, $txtBurp, $btnBrowse))
 
     # TenableWAS Controls
-    $lblTenable = New-Object System.Windows.Forms.Label -Property @{ Text = 'TenableWAS Scan ID:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 210) }
-    $script:txtTenable = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(330, 20); Location = New-Object System.Drawing.Point(150, 208) }
-    $form.Controls.AddRange(@($lblTenable, $txtTenable))
+    $lblTenable = New-Object System.Windows.Forms.Label -Property @{ Text = 'TenableWAS Scans:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 180) }
+    $script:txtTenableSearch = New-Object System.Windows.Forms.TextBox -Property @{ 
+        Size = New-Object System.Drawing.Size(330, 20); 
+        Location = New-Object System.Drawing.Point(150, 180)
+        PlaceholderText = "Search scans by name..."
+    }
+    $script:lstTenableScans = New-Object System.Windows.Forms.CheckedListBox -Property @{ 
+        Size = New-Object System.Drawing.Size(330, 70); 
+        Location = New-Object System.Drawing.Point(150, 205); 
+        CheckOnClick = $true 
+    }
+    $script:btnRefreshTenable = New-Object System.Windows.Forms.Button -Property @{ Text = 'Refresh'; Location = New-Object System.Drawing.Point(490, 205); Size = New-Object System.Drawing.Size(60, 25) }
+    $form.Controls.AddRange(@($lblTenable, $script:txtTenableSearch, $script:lstTenableScans, $script:btnRefreshTenable))
 
     # GitHub organization controls
-    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 240) }
+    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 300) }
     $script:txtGitHubOrgs = New-Object System.Windows.Forms.TextBox -Property @{
-        Location = New-Object System.Drawing.Point(150, 238)
+        Location = New-Object System.Drawing.Point(150, 298)
         Size     = New-Object System.Drawing.Size(330, 20)
         Enabled  = $true
     }
@@ -207,14 +217,13 @@ function Initialize-GuiElements {
 
     # DefectDojo Controls
     $ddControls = @{
-        lblDDProduct            = [Tuple]::Create('DefectDojo Product:', 270)
-        lblDDEng                = [Tuple]::Create('Engagement:', 300)
-        lblDDApiScan            = [Tuple]::Create('API Scan Config:', 330)
-        lblDDTestTenable        = [Tuple]::Create('TenableWAS Test:', 360)
-        lblDDTestSonar          = [Tuple]::Create('SonarQube Test:', 390)
-        lblDDTestBurp           = [Tuple]::Create('BurpSuite Test:', 420)
-        lblDDTestDependabot     = [Tuple]::Create('Dependabot Test:', 450)
-        lblDDSeverity           = [Tuple]::Create('Minimum Severity:', 480)
+        lblDDProduct            = [Tuple]::Create('DefectDojo Product:', 330)
+        lblDDEng                = [Tuple]::Create('Engagement:', 360)
+        lblDDApiScan            = [Tuple]::Create('API Scan Config:', 390)
+        lblDDTestSonar          = [Tuple]::Create('SonarQube Test:', 420)
+        lblDDTestBurp           = [Tuple]::Create('BurpSuite Test:', 450)
+        lblDDTestDependabot     = [Tuple]::Create('Dependabot Test:', 480)
+        lblDDSeverity           = [Tuple]::Create('Minimum Severity:', 510)
     }
 
     foreach ($name in $ddControls.Keys) {
@@ -230,7 +239,7 @@ function Initialize-GuiElements {
     $grpManualTool = New-Object System.Windows.Forms.GroupBox
     $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
     $grpManualTool.Size = New-Object System.Drawing.Size(580, 80)
-    $grpManualTool.Location = New-Object System.Drawing.Point(10, 500)
+    $grpManualTool.Location = New-Object System.Drawing.Point(10, 570)
     $form.Controls.Add($grpManualTool)
 
     # Launch DefectDojo CLI Button
@@ -251,22 +260,23 @@ function Initialize-GuiElements {
     $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
 
     # Status ListBox (moved down to accommodate new group)
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 585) }
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 660) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
-    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 715); Size = New-Object System.Drawing.Size(80, 30) }
-    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 715); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 795); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 795); Size = New-Object System.Drawing.Size(80, 30) }
     
     # Add completion message label
     $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
         Text = ""; 
-        Location = New-Object System.Drawing.Point(10, 750); 
+        Location = New-Object System.Drawing.Point(10, 830); 
         Size = New-Object System.Drawing.Size(400, 25);
         Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
         ForeColor = [System.Drawing.Color]::Green;
         Visible = $false
     }
+
     
     $form.Controls.AddRange(@($btnLaunch, $btnCancel, $script:lblComplete))
 }
@@ -282,7 +292,21 @@ function Register-EventHandlers {
         $script:btnBrowse.Enabled = $this.Checked
         $script:cmbDDTestBurp.Enabled = $this.Checked -and $script:cmbDDTestBurp.Items.Count -gt 0
     })
-    $chkBoxes['TenableWAS'].Add_CheckedChanged({ $script:cmbDDTestTenable.Enabled = $this.Checked -and $script:cmbDDTestTenable.Items.Count -gt 0 })
+    $chkBoxes['TenableWAS'].Add_CheckedChanged({
+        $script:lstTenableScans.Enabled = $this.Checked
+        $script:txtTenableSearch.Enabled = $this.Checked
+        $script:btnRefreshTenable.Enabled = $this.Checked
+        if ($this.Checked -and $script:lstTenableScans.Items.Count -eq 0) {
+            Load-TenableScans
+        }
+    })
+    $script:btnRefreshTenable.Add_Click({ Load-TenableScans })
+    
+    # Tenable scan search/filter
+    $script:txtTenableSearch.Add_TextChanged({
+        Apply-TenableSearch -SearchTerm $this.Text
+    })
+
     $chkBoxes['SonarQube'].Add_CheckedChanged({
         $script:cmbDDTestSonar.Enabled = $this.Checked -and $script:cmbDDTestSonar.Items.Count -gt 0
         $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
@@ -347,7 +371,7 @@ function Handle-ProductChange {
         $script:cmbDDEng.Enabled = $true
 
         # Clear subsequent dropdowns
-        @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp) | ForEach-Object {
+        @($script:cmbDDTestSonar, $script:cmbDDTestBurp) | ForEach-Object {
             $_.Enabled = $false; $_.Items.Clear()
         }
     } catch {
@@ -362,7 +386,7 @@ function Handle-EngagementChange {
     Write-GuiMessage "Loading tests for engagement $($selectedEngagement.Name)..."
     try {
         $tests = Get-DefectDojoTests -EngagementId $selectedEngagement.Id
-        foreach ($cmb in @($script:cmbDDTestTenable, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestDependabot)) {
+        foreach ($cmb in @($script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestDependabot)) {
             $cmb.Items.Clear()
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
@@ -370,13 +394,11 @@ function Handle-EngagementChange {
             $cmb.ValueMember = 'Id'
         }
         # Set DisplayMember based on needed display, Title works for most Dojo tests
-        $script:cmbDDTestTenable.DisplayMember = 'Title'   # Show test title for TenableWAS
         $script:cmbDDTestSonar.DisplayMember = 'Title'     # Show test type title for SonarQube
         $script:cmbDDTestBurp.DisplayMember = 'Title'      # Show test type title for BurpSuite
         $script:cmbDDTestDependabot.DisplayMember = 'Title'
 
         # Re-evaluate enabled state based on tool selection and if tests were found
-        $script:cmbDDTestTenable.Enabled = $script:chkBoxes['TenableWAS'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
         $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
         $script:cmbDDTestDependabot.Enabled = $script:chkBoxes['GitHubDependabot'].Checked -and $tests.Count -gt 0
@@ -465,6 +487,67 @@ function Invoke-ExternalTool {
 
 #region Data Loading and Pre-population
 
+function Load-TenableScans {
+    Write-GuiMessage "Loading TenableWAS scans..."
+    try {
+        $scans = Get-TenableWASScanConfigs
+        $script:allTenableScans = @()
+        $script:lstTenableScans.Items.Clear()
+        if ($scans) {
+            $script:allTenableScans = $scans
+            Apply-TenableSearch -SearchTerm ($script:txtTenableSearch.Text)
+        }
+        $script:lstTenableScans.DisplayMember = "Name"
+        $script:lstTenableScans.ValueMember = "Id"
+        
+        # Restore selection if config has names
+        $config = Get-Config
+        if ($config.TenableWASScanNames -and $config.TenableWASScanNames.Count -gt 0) {
+            for ($i = 0; $i -lt $script:lstTenableScans.Items.Count; $i++) {
+                $item = $script:lstTenableScans.Items[$i]
+                if ($item.Name -in $config.TenableWASScanNames) {
+                    $script:lstTenableScans.SetItemChecked($i, $true)
+                }
+            }
+        }
+    } catch {
+        Write-GuiMessage "Failed to load TenableWAS scans: $_" 'ERROR'
+    }
+}
+
+function Apply-TenableSearch {
+    param([string]$SearchTerm)
+
+    # Preserve current checked IDs
+    $checkedIds = @()
+    for ($i = 0; $i -lt $script:lstTenableScans.Items.Count; $i++) {
+        if ($script:lstTenableScans.GetItemChecked($i)) {
+            $checkedIds += $script:lstTenableScans.Items[$i].Id
+        }
+    }
+
+    $script:lstTenableScans.Items.Clear()
+    if (-not $script:allTenableScans) { return }
+
+    $term = $SearchTerm
+    $filtered = if ([string]::IsNullOrWhiteSpace($term)) { 
+        $script:allTenableScans 
+    } else {
+        $script:allTenableScans | Where-Object { $_.Name -like "*${term}*" }
+    }
+
+    foreach ($scan in $filtered) {
+        $null = $script:lstTenableScans.Items.Add($scan)
+    }
+
+    # Re-check items that were previously checked
+    for ($i = 0; $i -lt $script:lstTenableScans.Items.Count; $i++) {
+        if ($script:lstTenableScans.Items[$i].Id -in $checkedIds) {
+            $script:lstTenableScans.SetItemChecked($i, $true)
+        }
+    }
+}
+
 function Load-DefectDojoData {
     if ($script:chkBoxes['DefectDojo'].Checked) {
         Write-GuiMessage 'Loading DefectDojo products...'
@@ -515,8 +598,8 @@ function Prepopulate-FormFromConfig {
     }
     Update-GitHubControlState
 
-    if ($Config.TenableWASScanId ) {
-        $script:txtTenable.Text = $Config.TenableWASScanId
+    if ($script:chkBoxes['TenableWAS'].Checked) {
+        Load-TenableScans
     }
 
     if ($Config.Paths.ContainsKey('BurpSuiteXmlFolder')) {
@@ -556,12 +639,8 @@ function Prepopulate-FormFromConfig {
                         $script:cmbDDEng.SelectedItem = $selectedEngagement
                         Handle-EngagementChange
                         $script:form.Update()
-                        
+
                         # Pre-select test dropdowns after engagement is loaded
-                        if ($Config.DefectDojo.TenableWASTestId) {
-                            $selectedTenableTest = $script:cmbDDTestTenable.Items | Where-Object { $_.Id -eq $Config.DefectDojo.TenableWASTestId }
-                            if ($selectedTenableTest) { $script:cmbDDTestTenable.SelectedItem = $selectedTenableTest }
-                        }
                         if ($Config.DefectDojo.SonarQubeTestId) {
                             $selectedSonarTest = $script:cmbDDTestSonar.Items | Where-Object { $_.Id -eq $Config.DefectDojo.SonarQubeTestId }
                             if ($selectedSonarTest) { $script:cmbDDTestSonar.SelectedItem = $selectedSonarTest }
@@ -621,7 +700,40 @@ function Invoke-Automation {
             }
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
-        if ($script:txtTenable.Text) { $config.TenableWASScanId = $script:txtTenable.Text }
+        
+        $selectedScans = $script:lstTenableScans.CheckedItems
+        $tenableScanNamesChanged = $false
+        if ($selectedScans.Count -gt 0) {
+             $newScanNames = @($selectedScans | ForEach-Object { $_.Name })
+             
+             # Get existing scan names, filtering out nulls
+             $existingScanNames = if ($config.ContainsKey('TenableWASScanNames') -and $null -ne $config.TenableWASScanNames) {
+                 @($config.TenableWASScanNames | Where-Object { $_ })
+             } else {
+                 @()
+             }
+             
+             # Check if scan names have changed
+             if ($existingScanNames.Count -eq 0 -and $newScanNames.Count -gt 0) {
+                 # No existing scans, but we have new ones
+                 $tenableScanNamesChanged = $true
+             } elseif ($existingScanNames.Count -ne $newScanNames.Count) {
+                 # Different count
+                 $tenableScanNamesChanged = $true
+             } elseif ($existingScanNames.Count -gt 0) {
+                 # Same count, check if contents differ
+                 $differences = Compare-Object -ReferenceObject $existingScanNames -DifferenceObject $newScanNames -ErrorAction SilentlyContinue
+                 if ($differences) {
+                     $tenableScanNamesChanged = $true
+                 }
+             }
+             
+             if ($tenableScanNamesChanged) {
+                 $config.TenableWASScanNames = $newScanNames
+                 Write-GuiMessage "TenableWAS scan selection changed: $($newScanNames -join ', ')"
+             }
+             $config.TenableWASSelectedScans = @($selectedScans)
+        }
 
         $existingGitHubOrgs = @($config.GitHub.Orgs)
         $githubInput = $script:txtGitHubOrgs.Text
@@ -654,6 +766,17 @@ function Invoke-Automation {
             Write-GuiMessage 'GitHub organization textbox is empty; retaining existing configuration values.' 'WARNING'
             if ($config.GitHub.Orgs) {
                 $script:txtGitHubOrgs.Text = ($config.GitHub.Orgs -join ', ')
+            }
+        }
+
+        # Save TenableWAS scan selections if they changed
+        if ($tenableScanNamesChanged) {
+            try {
+                Write-GuiMessage "Saving TenableWAS scan selections to config..."
+                Save-Config -Config $config
+                Write-GuiMessage 'TenableWAS scan selection saved.'
+            } catch {
+                Write-GuiMessage "Failed to save TenableWAS scan selection: $_" 'ERROR'
             }
         }
 
@@ -726,30 +849,95 @@ function Invoke-Automation {
 
 function Process-TenableWAS {
     param([hashtable]$Config)
-    Write-GuiMessage "Starting TenableWAS scan export (Scan ID: $($Config.TenableWASScanId))"
-    try {
-        $exportedFile = Export-TenableWASScan -ScanId $Config.TenableWASScanId
-        Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
 
-        if ($Config.Tools.DefectDojo) {
-            Write-GuiMessage "Uploading TenableWAS scan report to DefectDojo..."
+    if (-not $Config.TenableWASSelectedScans -or $Config.TenableWASSelectedScans.Count -eq 0) {
+        Write-GuiMessage "No TenableWAS scans selected." 'WARNING'
+        return
+    }
 
-            # Get the specifically selected TenableWAS test
-            $tenableTest = $script:cmbDDTestTenable.SelectedItem
-            if (-not $tenableTest) {
-                Write-GuiMessage "No TenableWAS test selected for DefectDojo upload" 'WARNING'
-                return
-            }
-
-            # Ensure file path is explicitly converted to string
-            $filePathString = ([string]$exportedFile).Trim()
-
-            # Upload directly to the TenableWAS test only
-            Upload-DefectDojoScan -FilePath $filePathString -TestId $tenableTest.Id -ScanType 'Tenable Scan' -CloseOldFindings $true
-            Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $($tenableTest.Name)"
+    # Initialize DefectDojo-specific variables if DefectDojo is enabled
+    if ($Config.Tools.DefectDojo) {
+        # Verify engagement is selected (required for test creation)
+        $engagement = $script:cmbDDEng.SelectedItem
+        if (-not $engagement) {
+            Write-GuiMessage "No DefectDojo engagement selected; cannot create TenableWAS tests." 'ERROR'
+            return
         }
-    } catch {
-        Write-GuiMessage "TenableWAS processing failed: $_" 'ERROR'
+
+        # Get test_type ID dynamically by looking up 'Tenable Scan' parser name
+        # This ensures compatibility across different DefectDojo instances where test type IDs may differ
+        try {
+            $tenableTestTypeId = Get-DefectDojoTestType -TestTypeName 'Tenable Scan'
+            Write-GuiMessage "Resolved 'Tenable Scan' test type to ID: $tenableTestTypeId"
+        } catch {
+            Write-GuiMessage "Failed to lookup 'Tenable Scan' test type: $_" 'ERROR'
+            return
+        }
+
+        # Retrieve existing tests once for efficiency
+        $existingTests = @(Get-DefectDojoTests -EngagementId $engagement.Id)
+    }
+
+    $uploadErrors = 0
+    $totalScans = $Config.TenableWASSelectedScans.Count
+
+    foreach ($scan in $Config.TenableWASSelectedScans) {
+        Write-GuiMessage "Starting TenableWAS scan export (Scan: $($scan.Name) - ID: $($scan.Id))"
+        try {
+            # Step 1: Export scan report
+            $exportedFile = Export-TenableWASScan -ScanName $scan.Name
+            Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
+
+            if ($Config.Tools.DefectDojo) {
+                Write-GuiMessage "Processing TenableWAS scan for DefectDojo upload..."
+
+                # Step 2: Determine test name
+                $serviceName = "$($scan.Name) (Tenable WAS)"
+
+                # Step 3: Check if test exists
+                $existingTest = $existingTests | Where-Object {
+                    $_.Title -in @($serviceName, $scan.Name, "$($scan.Name) (Tenable)")
+                } | Select-Object -First 1
+
+                if (-not $existingTest) {
+                    # Step 4a: Create new test
+                    Write-GuiMessage "Creating new DefectDojo test: $serviceName"
+                    try {
+                        $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType $tenableTestTypeId
+                        Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
+                        $existingTests = @($existingTests) + $newTest  # Add to cache
+                        $testId = $newTest.Id
+                    } catch {
+                        $errorMsg = $_.Exception.Message
+                        Write-GuiMessage "Failed to create test ${serviceName}: $errorMsg" 'ERROR'
+                        $uploadErrors++
+                        continue  # Skip to next scan
+                    }
+                } else {
+                    # Step 4b: Use existing test
+                    Write-GuiMessage "Using existing DefectDojo test: $($existingTest.Title) (ID: $($existingTest.Id))"
+                    $testId = $existingTest.Id
+                }
+
+                # Step 5: Upload scan to test
+                $filePathString = ([string]$exportedFile).Trim()
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $true
+                Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $serviceName"
+            }
+        } catch {
+            $uploadErrors++
+            Write-GuiMessage "TenableWAS processing failed for $($scan.Name): $_" 'ERROR'
+        }
+    }
+
+    # Summary reporting
+    if ($Config.Tools.DefectDojo) {
+        if ($uploadErrors -eq 0) {
+            Write-GuiMessage "All $totalScans TenableWAS scans uploaded successfully to DefectDojo"
+        } else {
+            $successCount = $totalScans - $uploadErrors
+            Write-GuiMessage "TenableWAS upload completed: $successCount successful, $uploadErrors failed" 'WARNING'
+        }
     }
 }
 
@@ -1056,7 +1244,6 @@ function Save-DefectDojoConfig {
         Product         = $script:cmbDDProduct.SelectedItem
         Engagement      = $script:cmbDDEng.SelectedItem
         ApiScanConfig   = $script:cmbDDApiScan.SelectedItem
-        TenableWASTest  = $script:cmbDDTestTenable.SelectedItem
         SonarQubeTest   = $script:cmbDDTestSonar.SelectedItem
         BurpSuiteTest   = $script:cmbDDTestBurp.SelectedItem
         GitHubDependabotTest = $script:cmbDDTestDependabot.SelectedItem
@@ -1068,7 +1255,6 @@ function Save-DefectDojoConfig {
     # Validate that all necessary selections have been made
     $incomplete = $false
     if (-not $selections.Product -or -not $selections.Engagement) { $incomplete = $true }
-    if ($Config.Tools.TenableWAS -and -not $selections.TenableWASTest) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
     if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
     if ($dependabotEnabled -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
@@ -1083,7 +1269,6 @@ function Save-DefectDojoConfig {
         ProductId         = $selections.Product.Id
         EngagementId      = $selections.Engagement.Id
         APIScanConfigId   = $selections.ApiScanConfig.Id
-        TenableWASTestId  = $selections.TenableWASTest.Id
         SonarQubeTestId   = $selections.SonarQubeTest.Id
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
         GitHubDependabotTestId = $selections.GitHubDependabotTest.Id

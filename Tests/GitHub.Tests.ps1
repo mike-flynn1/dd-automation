@@ -295,7 +295,7 @@ Describe 'GitHub-SecretScanDownload' {
         }
         Mock Invoke-GitHubPagedJson {
             @([pscustomobject]@{ id = 1 })
-        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=100' }
 
         GitHub-SecretScanDownload
 
@@ -317,7 +317,7 @@ Describe 'GitHub-SecretScanDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
+        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=100' }
 
         GitHub-SecretScanDownload
 
@@ -343,7 +343,7 @@ Describe 'GitHub-SecretScanDownload' {
             $ex = New-Object System.Exception 'Forbidden'
             Add-Member -InputObject $ex -MemberType NoteProperty -Name Response -Value ([pscustomobject]@{ Content = 'Secret Scanning is disabled for this repository.' }) -Force
             throw $ex
-        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=200' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=100' }
 
         GitHub-SecretScanDownload
 

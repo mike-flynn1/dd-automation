@@ -174,14 +174,19 @@ function Save-Config {
         $sb.AppendLine("        $api = '$url'") | Out-Null
     }
     $sb.AppendLine('    }') | Out-Null
-    #TenableWAS ScanId
-    if ($Config.ContainsKey('TenableWASScanId')) {
+    # TenableWAS ScanNames
+    if ($Config.ContainsKey('TenableWASScanNames')) {
         $sb.AppendLine('') | Out-Null
-        $scanId = $Config.TenableWASScanId
-        if ($null -ne $scanId) {
-            $sb.AppendLine("    TenableWASScanId = '$scanId'") | Out-Null
+        $scanNames = $Config.TenableWASScanNames
+        if ($null -ne $scanNames -and $scanNames.Count -gt 0) {
+            $sb.AppendLine('    TenableWASScanNames = @(') | Out-Null
+            foreach ($name in $scanNames) {
+                $escapedName = $name -replace "'","''"
+                $sb.AppendLine("        '$escapedName'") | Out-Null
+            }
+            $sb.AppendLine('    )') | Out-Null
         } else {
-            $sb.AppendLine('    TenableWASScanId = $null') | Out-Null
+            $sb.AppendLine('    TenableWASScanNames = @()') | Out-Null
         }
     }
     # DefectDojo selections
