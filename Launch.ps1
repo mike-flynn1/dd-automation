@@ -235,6 +235,12 @@ function Initialize-GuiElements {
     }
     $script:cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
 
+    # Close Old Findings on Reimport Checkbox
+    $lblDDCloseFindings = New-Object System.Windows.Forms.Label -Property @{ Text = 'Close Old Findings:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 540) }
+    $script:chkDDCloseFindings = New-Object System.Windows.Forms.CheckBox -Property @{ AutoSize = $true; Location = New-Object System.Drawing.Point(150, 542); Checked = $false; Enabled = $false }
+    $form.Controls.AddRange(@($lblDDCloseFindings, $script:chkDDCloseFindings))
+    $script:toolTip.SetToolTip($script:chkDDCloseFindings, 'When checked, old findings will be closed on reimport. When unchecked, previous findings are preserved.')
+
     # Manual Upload (DefectDojo CLI) GroupBox
     $grpManualTool = New-Object System.Windows.Forms.GroupBox
     $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
@@ -318,6 +324,7 @@ function Register-EventHandlers {
     }
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
+        $script:chkDDCloseFindings.Enabled = $this.Checked
     })
 
     # Browse for BurpSuite folder
@@ -666,6 +673,9 @@ function Prepopulate-FormFromConfig {
         if ($Config.DefectDojo.MinimumSeverity) {
             $script:cmbDDSeverity.SelectedItem = $Config.DefectDojo.MinimumSeverity
         }
+        if ($Config.DefectDojo.CloseOldFindings) {
+            $script:chkDDCloseFindings.Checked = $Config.DefectDojo.CloseOldFindings
+        }
     }
     Write-GuiMessage "Pre-population complete."
 }
@@ -921,7 +931,7 @@ function Process-TenableWAS {
 
                 # Step 5: Upload scan to test
                 $filePathString = ([string]$exportedFile).Trim()
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $true
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $script:chkDDCloseFindings.Checked
                 Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $serviceName"
             }
         } catch {
@@ -994,7 +1004,7 @@ function Process-BurpSuite {
                 $filePathString = ([string]$xmlFile).Trim()
 
                 # Upload to DefectDojo using Burp Scan type
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $burpTest.Id -ScanType 'Burp Scan'
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $burpTest.Id -ScanType 'Burp Scan' -CloseOldFindings $script:chkDDCloseFindings.Checked
                 Write-GuiMessage "Successfully uploaded $fileName to DefectDojo test: $($burpTest.Title)"
             } catch {
                 Write-GuiMessage "Failed to upload $fileName : $_" 'ERROR'
@@ -1062,11 +1072,11 @@ function Process-GitHubCodeQL {
                             continue
                         }
                         #Upload with new test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF'
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF' -CloseOldFindings $script:chkDDCloseFindings.Checked
                     } else {
                         Write-GuiMessage "Using existing test: $($existingTest.Title) (ID: $($existingTest.Id))"
                         #Upload with existing test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF'
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $script:chkDDCloseFindings.Checked
                     }
 
 
@@ -1150,11 +1160,11 @@ function Process-GitHubSecretScanning {
                             continue
                         }
                         #Upload with new test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning'
+                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $script:chkDDCloseFindings.Checked
                     } else {
                         Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
                         #Upload with existing test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning'
+                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $script:chkDDCloseFindings.Checked
                     }
                 } catch {
                     $uploadErrors++
@@ -1211,7 +1221,7 @@ function Process-GitHubDependabot {
             $uploadErrors = 0
             foreach ($file in $dependabotFiles) {
                 try {
-                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTest.Id -ScanType 'Universal Parser - GitHub Dependabot Aert5s'
+                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTest.Id -ScanType 'Universal Parser - GitHub Dependabot Aert5s' -CloseOldFindings $script:chkDDCloseFindings.Checked
                     Write-GuiMessage "Uploaded Dependabot JSON: $([System.IO.Path]::GetFileName($file)) to test $($dependabotTest.Name)"
                 } catch {
                     $uploadErrors++
@@ -1273,6 +1283,7 @@ function Save-DefectDojoConfig {
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
         GitHubDependabotTestId = $selections.GitHubDependabotTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
+        CloseOldFindings  = $script:chkDDCloseFindings.Checked
     }
 
     Write-GuiMessage "Saving DefectDojo selections to config file..."

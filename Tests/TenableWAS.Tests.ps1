@@ -169,6 +169,9 @@ Describe 'Process-TenableWAS (Unit)' {
         $env:TENWAS_ACCESS_KEY = 'test-key'
         $env:TENWAS_SECRET_KEY = 'test-secret'
         $env:DOJO_API_KEY = 'test-dojo-key'
+
+        # Mock the GUI checkbox for CloseOldFindings
+        $script:chkDDCloseFindings = [PSCustomObject]@{ Checked = $false }
     }
 
     AfterAll {
@@ -270,7 +273,8 @@ Describe 'Process-TenableWAS (Unit)' {
             # Verify upload was called
             Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter {
                 $TestId -eq 100 -and
-                $ScanType -eq 'Tenable Scan'
+                $ScanType -eq 'Tenable Scan' -and
+                $CloseOldFindings -eq $false
             }
 
             # Verify success message
@@ -319,7 +323,10 @@ Describe 'Process-TenableWAS (Unit)' {
             Should -Invoke New-DefectDojoTest -Times 0
 
             # Verify upload used existing test ID
-            Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter { $TestId -eq 50 }
+            Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter { 
+                $TestId -eq 50 -and
+                $CloseOldFindings -eq $false
+            }
 
             # Verify message indicates existing test was used
             Should -Invoke Write-GuiMessage -ParameterFilter { $Message -match 'Using existing DefectDojo test' }
@@ -364,7 +371,10 @@ Describe 'Process-TenableWAS (Unit)' {
             Should -Invoke New-DefectDojoTest -Times 0
 
             # Verify upload used existing test ID
-            Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter { $TestId -eq 75 }
+            Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter { 
+                $TestId -eq 75 -and
+                $CloseOldFindings -eq $false
+            }
         }
     }
 
