@@ -103,6 +103,37 @@ Tools = @{
  6. Press Go.
  7. Monitor progress in the console and GUI; detailed logs are written to `logs/DDAutomationLauncher.log`.
 
+## CLI Usage (Headless / Scheduled Tasks)
+
+For CI/CD pipelines, Cron jobs, or Windows Task Scheduler, use the headless CLI script.
+
+### Basic Execution
+Runs automation using the default `config/config.psd1` file:
+```powershell
+./Run-Automation.ps1
+```
+
+### Custom Configuration
+Specify a different configuration file:
+```powershell
+./Run-Automation.ps1 -ConfigPath "C:\Configs\NightlyScan.psd1"
+```
+
+### Webhook Notifications
+Override or provide a Webhook URL (e.g., Slack, Teams) to receive status updates:
+```powershell
+./Run-Automation.ps1 -WebhookUrl "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+### Notifications Configuration
+You can also permanently configure webhooks in your `config.psd1`:
+```powershell
+Notifications = @{
+    WebhookUrl = 'https://hooks.slack.com/services/...'
+}
+```
+The CLI will send a "Success" notification upon completion or an "Error" notification if the script crashes.
+
 ## Tenable WAS Integration
 
 The Tenable WAS (Web Application Scanning) integration exports vulnerability scan results from Tenable's cloud-based platform and optionally uploads them to DefectDojo for centralized vulnerability management.

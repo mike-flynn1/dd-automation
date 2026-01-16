@@ -72,4 +72,9 @@
         )
     }
 
+    # Webhook Notifications (Optional)
+    Notifications = @{
+        # WebhookUrl = '...'
+    }
+
 }
