@@ -63,9 +63,23 @@ try {
     }
 
     # 2. Validate Environment
-    # (Optional: Add specific CLI environment validation if different from GUI)
+    . (Join-Path $scriptDir 'modules\EnvValidator.ps1')
+    Write-Log -Message "Validating environment variables..." -Level 'INFO'
+    try {
+        Validate-Environment -NonInteractive
+    } catch {
+        Write-Log -Message "Environment validation failed: $_" -Level 'ERROR'
+        exit 1
+    }
 
-    # 3. Execute Workflows
+    # 3. Prepare configuration for workflows (resolve scan selections)
+    if ($config.Tools.TenableWAS -and $config.TenableWASScanNames) {
+        Write-Log -Message "Resolving TenableWAS scan configurations..." -Level 'INFO'
+        $config.TenableWASSelectedScans = Resolve-TenableWASScans -Config $config
+        Write-Log -Message "Resolved $(@($config.TenableWASSelectedScans).Count) TenableWAS scan(s) for processing" -Level 'INFO'
+    }
+
+    # 4. Execute Workflows
     $errorsOccurred = $false
     
     # Process TenableWAS

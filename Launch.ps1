@@ -43,7 +43,7 @@ $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'DefectDojo.ps1')
 . (Join-Path $scriptDir 'Sonarqube.ps1')
 . (Join-Path $scriptDir 'Uploader.ps1')
-. (Join-Path $scriptDir 'modules\AutomationWorkflows.ps1')
+. (Join-Path $scriptDir 'AutomationWorkflows.ps1')
 
 # Initialize logging
 Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomationLauncher_Renewed.log' -Overwrite

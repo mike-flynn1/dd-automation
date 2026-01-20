@@ -348,4 +348,69 @@ function Normalize-GitHubConfig {
     }
 }
 
+function Resolve-TenableWASScans {
+    <#
+    .SYNOPSIS
+        Resolves configured TenableWAS scan names to scan objects.
+    .PARAMETER Config
+        Configuration hashtable containing TenableWASScanNames.
+    .OUTPUTS
+        [object[]] Array of scan objects with Name/Id properties. Returns empty array on error.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config
+    )
+
+    if (-not $Config.ContainsKey('TenableWASScanNames') -or -not $Config.TenableWASScanNames) {
+        Write-Verbose 'No TenableWAS scan names configured; skipping resolution.'
+        return @()
+    }
+
+    if (-not (Get-Command Get-TenableWASScanConfigs -ErrorAction SilentlyContinue)) {
+        $tenableModulePath = Join-Path $PSScriptRoot 'TenableWAS.ps1'
+        if (Test-Path $tenableModulePath) {
+            try {
+                . $tenableModulePath
+            } catch {
+                Write-Verbose "Failed to load TenableWAS module from $($tenableModulePath): $($_)"
+            }
+        }
+    }
+
+    if (-not (Get-Command Get-TenableWASScanConfigs -ErrorAction SilentlyContinue)) {
+        Write-Verbose 'Get-TenableWASScanConfigs is not available; skipping TenableWAS scan resolution.'
+        return @()
+    }
+
+    try {
+        $allScans = Get-TenableWASScanConfigs
+    } catch {
+        Write-Verbose "Failed to retrieve TenableWAS scan configurations: $($_)"
+        return @()
+    }
+
+    if (-not $allScans) {
+        Write-Verbose 'No TenableWAS scans were returned from the API.'
+        return @()
+    }
+
+    $requestedNames = @($Config.TenableWASScanNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($requestedNames.Count -eq 0) {
+        Write-Verbose 'All configured TenableWAS scan names were empty after trimming.'
+        return @()
+    }
+
+    $resolved = @($allScans | Where-Object { $_.Name -in $requestedNames })
+    if ($resolved.Count -lt $requestedNames.Count) {
+        $missing = $requestedNames | Where-Object { $_ -notin $resolved.Name }
+        if ($missing.Count -gt 0) {
+            Write-Warning ("TenableWAS scans not found: {0}" -f ($missing -join ', '))
+        }
+    }
+
+    return $resolved
+}
+
 #Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')
