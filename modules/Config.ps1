@@ -274,6 +274,42 @@ function Save-Config {
         $sb.AppendLine('    }') | Out-Null
     }
 
+    # Notifications configuration
+    if ($Config.ContainsKey('Notifications')) {
+        $sb.AppendLine('') | Out-Null
+        $sb.AppendLine('    Notifications = @{') | Out-Null
+        
+        foreach ($key in $Config.Notifications.Keys | Sort-Object) {
+            $val = $Config.Notifications[$key]
+            
+            if ($null -eq $val -or [string]::IsNullOrWhiteSpace($val)) {
+                # Skip empty values but preserve the key structure
+                $sb.AppendLine("        # $key = ''") | Out-Null
+            }
+            elseif ($val -is [string]) {
+                $escapedVal = $val -replace "'","''"
+                $sb.AppendLine("        $key = '$escapedVal'") | Out-Null
+            }
+            elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
+            }
+            elseif ($val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($entry in $val) {
+                    $escapedEntry = $entry -replace "'","''"
+                    $sb.AppendLine("            '$escapedEntry'") | Out-Null
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            else {
+                $sb.AppendLine("        $key = $val") | Out-Null
+            }
+        }
+        
+        $sb.AppendLine('    }') | Out-Null
+    }
+
     $sb.AppendLine('}') | Out-Null
 
     try {
