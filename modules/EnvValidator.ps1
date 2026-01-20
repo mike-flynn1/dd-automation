@@ -142,7 +142,8 @@ function Validate-Environment {
     param(
         [Parameter(Mandatory = $false)]
         [string[]]$RequiredVariables = (Get-EnvVariables),
-        [switch]$Test
+        [switch]$Test,
+        [switch]$NonInteractive
     )
 
     if ($Test) {
@@ -161,6 +162,14 @@ function Validate-Environment {
     }
 
     if ($missing.Count -gt 0) {
+        # In non-interactive mode, throw immediately without prompting
+        if ($NonInteractive) {
+            $msg = "Required environment variables missing: $($missing -join ', ')"
+            Write-Log -Message $msg -Level 'ERROR'
+            Throw $msg
+        }
+        
+        # Interactive mode: prompt user to set variables
         $response = Show-MissingVarsPrompt -MissingVars $missing
 
         if ($response -eq 'Yes') {

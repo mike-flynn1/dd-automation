@@ -183,6 +183,71 @@ Describe 'EnvValidator Module Tests' {
                 Mock Write-Log -MockWith {}
             }
         }
+
+        Context 'When NonInteractive switch is used' {
+            BeforeAll {
+                # Clean environment for missing vars tests
+                Remove-Item Env:DOJO_API_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:BURP_API_KEY -ErrorAction SilentlyContinue
+            }
+
+            It 'Should throw immediately without prompting when variables are missing' {
+                Mock Show-MissingVarsPrompt -MockWith { throw 'Show-MissingVarsPrompt should NOT be called in non-interactive mode' }
+                Mock Write-Log -MockWith {}
+                
+                { Validate-Environment -NonInteractive } | Should -Throw -ExpectedMessage '*Required environment variables missing*'
+                
+                # Verify prompt was never called
+                Should -Invoke Show-MissingVarsPrompt -Times 0
+            }
+
+            It 'Should log error when variables are missing in non-interactive mode' {
+                Mock Show-MissingVarsPrompt -MockWith {}
+                Mock Write-Log -MockWith {}
+                
+                { Validate-Environment -NonInteractive -ErrorAction SilentlyContinue } | Should -Throw
+                
+                Should -Invoke Write-Log -ParameterFilter { 
+                    $Message -like 'Required environment variables missing*' -and $Level -eq 'ERROR' 
+                } -Times 1
+            }
+
+            It 'Should not throw when all variables are set in non-interactive mode' {
+                # Set required variables
+                $env:DOJO_API_KEY = 'test-key'
+                $env:TENWAS_ACCESS_KEY = 'test-access'
+                $env:TENWAS_SECRET_KEY = 'test-secret'
+                $env:BURP_API_KEY = 'test-burp'
+                $env:GITHUB_PAT = 'test-pat'
+
+                Mock Write-Log -MockWith {}
+
+                { Validate-Environment -NonInteractive } | Should -Not -Throw
+
+                # Cleanup
+                Remove-Item Env:DOJO_API_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:TENWAS_ACCESS_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:TENWAS_SECRET_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:BURP_API_KEY -ErrorAction SilentlyContinue
+                Remove-Item Env:GITHUB_PAT -ErrorAction SilentlyContinue
+            }
+
+            It 'Should work with explicit RequiredVariables in non-interactive mode' {
+                Mock Write-Log -MockWith {}
+                
+                # Test with missing variable
+                { Validate-Environment -RequiredVariables @('MISSING_VAR_123') -NonInteractive } | 
+                    Should -Throw -ExpectedMessage '*Required environment variables missing: MISSING_VAR_123*'
+                
+                # Test with existing variable
+                $env:TEST_VAR_EXIST = 'value'
+                { Validate-Environment -RequiredVariables @('TEST_VAR_EXIST') -NonInteractive } | 
+                    Should -Not -Throw
+                Remove-Item Env:TEST_VAR_EXIST -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     Describe 'Request-MissingApiKeys' {
