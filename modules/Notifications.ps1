@@ -38,13 +38,54 @@ function Send-WebhookNotification {
     # Construct payload based on webhook type
     $payloadObject = switch ($WebhookType) {
         'PowerAutomate' {
-            # Simple flat structure for Power Automate
+            # Power Automate format with attachments array for adaptive cards
             @{
                 title = $Title
                 message = $Message
                 status = $Status
                 color = "#$color"
                 timestamp = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ')
+                attachments = @(
+                    @{
+                        contentType = 'application/vnd.microsoft.card.adaptive'
+                        content = @{
+                            type = 'AdaptiveCard'
+                            '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'
+                            version = '1.4'
+                            body = @(
+                                @{
+                                    type = 'TextBlock'
+                                    text = $Title
+                                    weight = 'Bolder'
+                                    size = 'Large'
+                                    wrap = $true
+                                }
+                                @{
+                                    type = 'TextBlock'
+                                    text = $Message
+                                    wrap = $true
+                                    spacing = 'Medium'
+                                }
+                                @{
+                                    type = 'FactSet'
+                                    facts = @(
+                                        @{
+                                            title = 'Status'
+                                            value = $Status
+                                        }
+                                        @{
+                                            title = 'Timestamp'
+                                            value = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+                                        }
+                                    )
+                                }
+                            )
+                            msteams = @{
+                                width = 'Full'
+                            }
+                        }
+                    }
+                )
             }
         }
         'Teams' {
@@ -67,7 +108,7 @@ function Send-WebhookNotification {
         }
     }
 
-    $payload = $payloadObject | ConvertTo-Json -Depth 4
+    $payload = $payloadObject | ConvertTo-Json -Depth 10
 
     Write-Verbose "Sending $WebhookType webhook notification to $WebhookUrl"
     try {

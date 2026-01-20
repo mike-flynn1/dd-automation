@@ -21,7 +21,7 @@ Describe "Send-WebhookNotification" {
     }
 
     Context "PowerAutomate Payload Construction" {
-        It "Should construct a flat JSON payload for PowerAutomate with Success status" {
+        It "Should construct Adaptive Card payload for PowerAutomate with Success status" {
             Mock Invoke-RestMethod
             Mock Write-Verbose
 
@@ -32,7 +32,8 @@ Describe "Send-WebhookNotification" {
                 $Body -match '"message":\s*"Job Done"' -and
                 $Body -match '"status":\s*"Success"' -and
                 $Body -match '"color":\s*"#00FF00"' -and
-                $Body -notmatch 'attachments'
+                $Body -match '"attachments"' -and
+                $Body -match 'AdaptiveCard'
             }
         }
 
@@ -48,15 +49,28 @@ Describe "Send-WebhookNotification" {
             }
         }
 
-        It "Should use PowerAutomate as default webhook type" {
+        It "Should use PowerAutomate as default webhook type with attachments" {
             Mock Invoke-RestMethod
             Mock Write-Verbose
 
             Send-WebhookNotification -WebhookUrl "https://prod-00.eastus.logic.azure.com/xxx" -Title "Test" -Message "Test Message"
 
             Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { 
-                $Body -notmatch 'attachments' -and
-                $Body -notmatch '@type'
+                $Body -match '"attachments"' -and
+                $Body -match 'AdaptiveCard'
+            }
+        }
+
+        It "Should include Adaptive Card schema and version" {
+            Mock Invoke-RestMethod
+            Mock Write-Verbose
+
+            Send-WebhookNotification -WebhookUrl "https://prod-00.eastus.logic.azure.com/xxx" -Title "Test" -Message "Test Message" -Status 'Info' -WebhookType 'PowerAutomate'
+
+            Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { 
+                $Body -match '"version":\s*"1.4"' -and
+                $Body -match 'http://adaptivecards.io/schemas/adaptive-card.json' -and
+                $Body -match '"contentType":\s*"application/vnd.microsoft.card.adaptive"'
             }
         }
     }
