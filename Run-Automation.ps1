@@ -123,10 +123,12 @@ try {
     if ($config.Notifications -and $config.Notifications.WebhookUrl) {
         # Simple success notification - could be enhanced to report specific failures
         # For now, we just report completion.
+        $webhookType = if ($config.Notifications.WebhookType) { $config.Notifications.WebhookType } else { 'PowerAutomate' }
         Send-WebhookNotification -WebhookUrl $config.Notifications.WebhookUrl `
                                  -Title "DD Automation Completed" `
                                  -Message "Scheduled automation run finished successfully at $(Get-Date)." `
-                                 -Status 'Success'
+                                 -Status 'Success' `
+                                 -WebhookType $webhookType
     }
 
 } catch {
@@ -135,10 +137,13 @@ try {
     
     # Try to send failure notification
     if ($config -and $config.Notifications -and $config.Notifications.WebhookUrl) {
+        $webhookType = if ($config.Notifications.WebhookType) { $config.Notifications.WebhookType } else { 'PowerAutomate' }
         Send-WebhookNotification -WebhookUrl $config.Notifications.WebhookUrl `
                                  -Title "DD Automation Failed" `
                                  -Message "Run failed with error: $errorMsg" `
-                                 -Status 'Error'
+                                 -Status 'Error' `
+                                 -WebhookType $webhookType
     }
     exit 1
 }
+

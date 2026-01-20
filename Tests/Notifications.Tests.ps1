@@ -20,27 +20,70 @@ Describe "Send-WebhookNotification" {
         }
     }
 
-    Context "Payload Construction" {
-        It "Should construct a valid JSON payload with 'Success' green color" {
+    Context "PowerAutomate Payload Construction" {
+        It "Should construct a flat JSON payload for PowerAutomate with Success status" {
             Mock Invoke-RestMethod
             Mock Write-Verbose
 
-            Send-WebhookNotification -WebhookUrl "https://hooks.slack.com/services/xxx" -Title "Success" -Message "Job Done" -Status 'Success'
+            Send-WebhookNotification -WebhookUrl "https://prod-00.eastus.logic.azure.com/xxx" -Title "Success" -Message "Job Done" -Status 'Success' -WebhookType 'PowerAutomate'
 
             Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { 
-                $Body -match '"themeColor":\s*"00FF00"' -and
-                $Body -match '"title":\s*"Success"'
+                $Body -match '"title":\s*"Success"' -and
+                $Body -match '"message":\s*"Job Done"' -and
+                $Body -match '"status":\s*"Success"' -and
+                $Body -match '"color":\s*"#00FF00"' -and
+                $Body -notmatch 'attachments'
             }
         }
 
-        It "Should construct a valid JSON payload with 'Error' red color" {
+        It "Should construct PowerAutomate payload with Error status" {
             Mock Invoke-RestMethod
             Mock Write-Verbose
 
-            Send-WebhookNotification -WebhookUrl "https://hooks.slack.com/services/xxx" -Title "Failed" -Message "Job Failed" -Status 'Error'
+            Send-WebhookNotification -WebhookUrl "https://prod-00.eastus.logic.azure.com/xxx" -Title "Failed" -Message "Job Failed" -Status 'Error' -WebhookType 'PowerAutomate'
 
             Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { 
-                $Body -match '"themeColor":\s*"FF0000"' 
+                $Body -match '"color":\s*"#FF0000"' -and
+                $Body -match '"status":\s*"Error"'
+            }
+        }
+
+        It "Should use PowerAutomate as default webhook type" {
+            Mock Invoke-RestMethod
+            Mock Write-Verbose
+
+            Send-WebhookNotification -WebhookUrl "https://prod-00.eastus.logic.azure.com/xxx" -Title "Test" -Message "Test Message"
+
+            Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { 
+                $Body -notmatch 'attachments' -and
+                $Body -notmatch '@type'
+            }
+        }
+    }
+
+    Context "Teams Payload Construction" {
+        It "Should construct MessageCard format for Teams" {
+            Mock Invoke-RestMethod
+            Mock Write-Verbose
+
+            Send-WebhookNotification -WebhookUrl "https://outlook.office.com/webhook/xxx" -Title "Teams Test" -Message "Teams Message" -Status 'Success' -WebhookType 'Teams'
+
+            Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { 
+                $Body -match '"@type":\s*"MessageCard"' -and
+                $Body -match '"themeColor":\s*"00FF00"' -and
+                $Body -match '"title":\s*"Teams Test"' -and
+                $Body -match '"sections"'
+            }
+        }
+
+        It "Should include status in Teams activitySubtitle" {
+            Mock Invoke-RestMethod
+            Mock Write-Verbose
+
+            Send-WebhookNotification -WebhookUrl "https://outlook.office.com/webhook/xxx" -Title "Test" -Message "Message" -Status 'Warning' -WebhookType 'Teams'
+
+            Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { 
+                $Body -match '"activitySubtitle":\s*"Status: Warning"'
             }
         }
     }
@@ -55,5 +98,15 @@ Describe "Send-WebhookNotification" {
             # The function uses Write-Error which can't be easily mocked, so just verify it doesn't throw
             # In real usage the error would be logged
         }
+
+        It "Should include payload in verbose output on error" {
+            Mock Invoke-RestMethod { throw "API unreachable" }
+            Mock Write-Verbose
+
+            Send-WebhookNotification -WebhookUrl "https://fake" -Title "T" -Message "M" -ErrorAction SilentlyContinue 2>&1 | Out-Null
+
+            Should -Invoke Write-Verbose -ParameterFilter { $Message -match 'Payload sent:' }
+        }
     }
 }
+

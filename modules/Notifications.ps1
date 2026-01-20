@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Module for sending notifications via Webhooks (e.g., Slack, Teams).
+    Module for sending notifications via Webhooks (Power Automate, Teams).
 #>
 
 function Send-WebhookNotification {
@@ -16,7 +16,10 @@ function Send-WebhookNotification {
         [string]$Message,
 
         [ValidateSet('Info', 'Success', 'Error', 'Warning')]
-        [string]$Status = 'Info'
+        [string]$Status = 'Info',
+
+        [ValidateSet('PowerAutomate', 'Teams')]
+        [string]$WebhookType = 'PowerAutomate'
     )
 
     if ([string]::IsNullOrWhiteSpace($WebhookUrl)) {
@@ -24,7 +27,7 @@ function Send-WebhookNotification {
         return
     }
 
-    # Determine color/theme based on status (Slack/Teams friendly)
+    # Determine color/theme based on status
     $color = switch ($Status) {
         'Success' { '00FF00' } # Green
         'Error'   { 'FF0000' } # Red
@@ -32,27 +35,48 @@ function Send-WebhookNotification {
         Default   { '0000FF' } # Blue
     }
 
-    # Construct payload (Simple JSON card format - generic adaptation)
-    $payload = @{
-        title = $Title
-        text = $Message
-        themeColor = $color
-        attachments = @(
+    # Construct payload based on webhook type
+    $payloadObject = switch ($WebhookType) {
+        'PowerAutomate' {
+            # Simple flat structure for Power Automate
             @{
+                title = $Title
+                message = $Message
+                status = $Status
                 color = "#$color"
+                timestamp = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ')
+            }
+        }
+        'Teams' {
+            # Microsoft Teams MessageCard format
+            @{
+                '@type' = 'MessageCard'
+                '@context' = 'https://schema.org/extensions'
+                summary = $Title
+                themeColor = $color
                 title = $Title
                 text = $Message
-                fallback = "$Title - $Message"
-                mrkdwn_in = @("text")
+                sections = @(
+                    @{
+                        activityTitle = $Title
+                        activitySubtitle = "Status: $Status"
+                        text = $Message
+                    }
+                )
             }
-        )
-    } | ConvertTo-Json -Depth 4
+        }
+    }
 
-    Write-Verbose "Sending webhook notification to $WebhookUrl"
+    $payload = $payloadObject | ConvertTo-Json -Depth 4
+
+    Write-Verbose "Sending $WebhookType webhook notification to $WebhookUrl"
     try {
-        Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $payload -ContentType 'application/json' -ErrorAction Stop
+        $response = Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $payload -ContentType 'application/json' -ErrorAction Stop
         Write-Verbose "Notification sent successfully."
+        return $response
     } catch {
         Write-Error "Failed to send webhook notification: $_"
+        Write-Verbose "Payload sent: $payload"
     }
 }
+

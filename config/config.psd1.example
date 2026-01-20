@@ -74,7 +74,9 @@
 
     # Webhook Notifications (Optional)
     Notifications = @{
-        # WebhookUrl = '...'
+        # WebhookUrl = 'https://your-webhook-url-here'
+        # WebhookType = 'PowerAutomate'  # Options: 'PowerAutomate' (default), 'Teams'
     }
 
 }
+
