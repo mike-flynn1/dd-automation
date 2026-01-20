@@ -5,8 +5,13 @@
     Full integration tests would require extensive mocking of the other modules.
 #>
 
-$scriptDir = Split-Path $PSScriptRoot -Parent
-. (Join-Path $scriptDir 'modules\AutomationWorkflows.ps1')
+BeforeAll {
+    $scriptDir = Split-Path $PSScriptRoot -Parent
+    . (Join-Path $scriptDir 'modules\Logging.ps1')
+    . (Join-Path $scriptDir 'modules\Config.ps1')
+    . (Join-Path $scriptDir 'modules\BurpSuite.ps1')
+    . (Join-Path $scriptDir 'modules\AutomationWorkflows.ps1')
+}
 
 Describe "AutomationWorkflows" {
 
