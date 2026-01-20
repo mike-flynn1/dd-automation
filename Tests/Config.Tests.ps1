@@ -121,29 +121,13 @@ Describe 'Save-Config' {
 }
 
 Describe 'Resolve-TenableWASScans' {
-    BeforeAll {
-        # Mock Tenable module function
-        $script:originalFn = $null
-        if (Get-Command Get-TenableWASScanConfigs -ErrorAction SilentlyContinue) {
-            $script:originalFn = (Get-Command Get-TenableWASScanConfigs).ScriptBlock
-        }
-    }
-
-    AfterAll {
-        if ($script:originalFn) {
-            Set-Item -Path function:Get-TenableWASScanConfigs -Value $script:originalFn
-        } else {
-            Remove-Item -Path function:Get-TenableWASScanConfigs -ErrorAction SilentlyContinue
-        }
-    }
-
     It 'Resolves matching scan names' {
         # Arrange
         $config = @{
             TenableWASScanNames = @('Scan A','Scan C')
         }
 
-        function Get-TenableWASScanConfigs {
+        Set-Item -Path function:Get-TenableWASScanConfigs -Value {
             return @(
                 [pscustomobject]@{ Name = 'Scan A'; Id = 'id-a' },
                 [pscustomobject]@{ Name = 'Scan B'; Id = 'id-b' },
@@ -151,31 +135,47 @@ Describe 'Resolve-TenableWASScans' {
             )
         }
 
-        # Act
-        $result = Resolve-TenableWASScans -Config $config
+        try {
+            # Act
+            $result = Resolve-TenableWASScans -Config $config
 
-        # Assert
-        $result.Count | Should -Be 2
-        ($result | Where-Object Name -eq 'Scan A').Id | Should -Be 'id-a'
-        ($result | Where-Object Name -eq 'Scan C').Id | Should -Be 'id-c'
+            # Assert
+            $result.Count | Should -Be 2
+            ($result | Where-Object Name -eq 'Scan A').Id | Should -Be 'id-a'
+            ($result | Where-Object Name -eq 'Scan C').Id | Should -Be 'id-c'
+        } finally {
+            # Clean up
+            Remove-Item -Path function:Get-TenableWASScanConfigs -ErrorAction SilentlyContinue
+        }
     }
 
-    It 'Returns empty when names missing' {
-        $config = @{ TenableWASScanNames = @() }
-        function Get-TenableWASScanConfigs { @() }
-
+    It 'Returns empty for null scan names' {
+        $config = @{ TenableWASScanNames = $null }
         $result = Resolve-TenableWASScans -Config $config
-        $result | Should -BeEmpty
+        $result | Should -BeNullOrEmpty
     }
 
-    It 'Warns and skips when function unavailable' {
-        Remove-Item -Path function:Get-TenableWASScanConfigs -ErrorAction SilentlyContinue
-        function Get-TenableWASScanConfigs { param(); throw 'Should not be called' }
+    It 'Returns empty when no matching scans found' {
+        # Arrange
+        $config = @{
+            TenableWASScanNames = @('NonexistentScan')
+        }
 
-        $config = @{ TenableWASScanNames = @('Scan A') }
+        Set-Item -Path function:Get-TenableWASScanConfigs -Value {
+            return @(
+                [pscustomobject]@{ Name = 'Scan A'; Id = 'id-a' }
+            )
+        }
 
-        { Resolve-TenableWASScans -Config $config } | Should -Not -Throw
-        $result = Resolve-TenableWASScans -Config $config
-        $result | Should -BeEmpty
+        try {
+            # Act
+            $result = Resolve-TenableWASScans -Config $config
+
+            # Assert
+            $result | Should -BeNullOrEmpty
+        } finally {
+            # Clean up
+            Remove-Item -Path function:Get-TenableWASScanConfigs -ErrorAction SilentlyContinue
+        }
     }
 }

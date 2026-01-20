@@ -357,9 +357,8 @@ function Resolve-TenableWASScans {
     .OUTPUTS
         [object[]] Array of scan objects with Name/Id properties. Returns empty array on error.
     #>
-    [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [hashtable]$Config
     )
 
