@@ -15,7 +15,7 @@ A comprehensive PowerShell-based automation toolset that orchestrates security f
 - **Advanced Filtering**: Repository filtering with include/exclude patterns and wildcard support
 - **Configuration Persistence**: User selections automatically saved to config file
 - **Comprehensive Testing**: Full Pester 5+ test suite with GitHub Actions CI/CD integration
-- **Webhook Notifications**: Slack/Teams notifications for scheduled automation runs
+- **Webhook Notifications**: Power Automate/Teams notifications for scheduled automation runs with Adaptive Card support
 - **DefectDojo CLI Integration**: Built-in launcher for manual uploads via DefectDojo CLI tool
 
 ### Supported Integrations
@@ -217,7 +217,8 @@ The `config\config.psd1` file uses PowerShell data file format (hashtable) for e
 
     # Webhook notifications for CLI automation (optional)
     Notifications = @{
-        WebhookUrl = 'https:/teamurl.com/services/YOUR/WEBHOOK/URL'
+        WebhookUrl  = 'https://prod-123.westus.logic.azure.com:443/workflows/YOUR/WEBHOOK/URL'
+        WebhookType = 'PowerAutomate'  # Options: 'PowerAutomate' (default), 'Teams'
     }
 }
 ```
@@ -347,15 +348,26 @@ For CI/CD pipelines, Cron jobs, or Windows Task Scheduler, use the headless CLI 
 
 **Webhook Notifications**:
 ```powershell
-.\Run-Automation.ps1 -WebhookUrl "https://teamsurl/services/YOUR/WEBHOOK/URL"
+.\Run-Automation.ps1 -WebhookUrl "https://prod-123.westus.logic.azure.com:443/workflows/YOUR/WEBHOOK/URL"
 ```
 
 Or configure webhooks permanently in `config.psd1`:
 ```powershell
 Notifications = @{
-    WebhookUrl = 'https://teamsurl/services/...'
+    WebhookUrl  = 'https://prod-123.westus.logic.azure.com:443/workflows/...'
+    WebhookType = 'PowerAutomate'  # Options: 'PowerAutomate' (default), 'Teams'
 }
 ```
+
+**Supported Webhook Types**:
+- **PowerAutomate** (default): Sends Adaptive Card format compatible with Power Automate workflows
+- **Teams**: Sends MessageCard format compatible with Microsoft Teams incoming webhooks
+
+Webhook notifications include:
+- Automation completion status (Success/Error)
+- Execution timestamp
+- List of tools executed
+- Color-coded status indicator
 
 **CLI Behavior**:
 - Loads configuration from specified file (or default)
@@ -631,7 +643,7 @@ The project uses a modular architecture with PowerShell dot-sourcing pattern for
 - **GitHub.ps1**: Repository retrieval, CodeQL SARIF download, Secret Scanning JSON, Dependabot alerts
 - **BurpSuite.ps1**: Local XML file discovery
 - **Uploader.ps1**: Multipart form-data file upload to DefectDojo `/reimport-scan/` endpoint
-- **Notifications.ps1**: Webhook notification sender (Slack/Teams compatible)
+- **Notifications.ps1**: Webhook notification sender (Power Automate/Teams compatible with Adaptive Cards)
 - **AutomationWorkflows.ps1**: Workflow orchestration logic (separated from GUI for CLI reuse)
 
 **Design Patterns**:
