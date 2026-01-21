@@ -2,21 +2,21 @@
 
 ## Overview
 
-A comprehensive PowerShell-based automation toolset that orchestrates security findings export and import between multiple security scanning tools and DefectDojo for centralized vulnerability management. The solution features a modern GUI interface, CLI support for automation/scheduling, and extensive API integrations with security tools.
+This PowerShell-based toolset automates the export and import of security findings between various tools:
 
-**Core Purpose**: Streamline the workflow of collecting security scan results from tools like Tenable WAS, SonarQube, GitHub Advanced Security, and BurpSuite, then automatically importing them into DefectDojo for unified vulnerability tracking and remediation management.
+ This PowerShell-based toolset automates the export and import of security findings between various tools:
+ - Tenable WAS → Defect Dojo
+ - SonarQube → Defect Dojo (reimport direct from Defect Dojo)
+ - GitHub CodeQL SARIF reports → Defect Dojo (Implemented)
+ - GitHub Secret Scanning JSON → Defect Dojo (Implemented)
+ - GitHub Dependabot JSON → Defect Dojo (Implemented)
+ - BurpSuite XML report parsing → Defect Dojo (Implemented)
 
-### Key Features
+ The solution is modular, extensible, and designed for easy addition of new tools.
 
-- **Multi-Tool Integration**: Tenable WAS, SonarQube, GitHub Advanced Security (CodeQL, Secret Scanning, Dependabot), BurpSuite
-- **Dual Interface**: Interactive GUI (Launch.ps1) and headless CLI (Run-Automation.ps1) for scheduled tasks
-- **Modular Architecture**: Extensible design using PowerShell dot-sourcing pattern for easy addition of new integrations
-- **Automated Test Creation**: Dynamically creates DefectDojo tests per scan/repository when needed
-- **Advanced Filtering**: Repository filtering with include/exclude patterns and wildcard support
-- **Configuration Persistence**: User selections automatically saved to config file
-- **Comprehensive Testing**: Full Pester 5+ test suite with GitHub Actions CI/CD integration
-- **Webhook Notifications**: Power Automate/Teams notifications for scheduled automation runs with Adaptive Card support
-- **DefectDojo CLI Integration**: Built-in launcher for manual uploads via DefectDojo CLI tool
+ Detailed help article in the Cyber Engineering Wiki [here](https://bamtech.visualstudio.com/BAM-IT/_wiki/wikis/BAM-IT.wiki/2729/DefectDojo-PowerShell-Tool-Overview). 
+
+v2.0.0 added complete CLI and webhook support to enable CI/CD runs and automation without user intervention. 
 
 ### Supported Integrations
 
@@ -27,7 +27,7 @@ A comprehensive PowerShell-based automation toolset that orchestrates security f
 | **GitHub CodeQL** | Complete | SARIF report download, per-repo test creation, latest analysis per category |
 | **GitHub Secret Scanning** | Complete | JSON alert export, open alert filtering, automatic feature detection |
 | **GitHub Dependabot** | Complete | Open alert export, configurable DefectDojo test target |
-| **BurpSuite** | Complete | Local XML report scanning, batch upload |
+| **BurpSuite** | Complete | Local XML report upload |
 | **DefectDojo** | Complete | Product/Engagement/Test management, API Scan Configurations, CLI launcher |
 
 ## Project Structure
@@ -86,7 +86,7 @@ dd-automation/
 ### Required Permissions
 - **DefectDojo**: API token with permissions to create/update products, engagements, tests, and import scans
 - **Tenable WAS**: API access and secret keys with scan read permissions
-- **GitHub**: Personal Access Token (PAT) with `repo` and `security_events` scopes for all target organizations
+- **GitHub**: Personal Access Token (PAT) with `repo` and `security_events` scopes for all target organizations, tokens must have SSO for relevant organizations and appropriate permissions must be granted by the organization admin
 - **SonarQube**: User token with project access (stored in DefectDojo API Scan Configuration)
 
 ## Installation
@@ -367,7 +367,6 @@ Webhook notifications include:
 - Automation completion status (Success/Error)
 - Execution timestamp
 - List of tools executed
-- Color-coded status indicator
 
 **CLI Behavior**:
 - Loads configuration from specified file (or default)
@@ -383,7 +382,7 @@ Arguments: -NoProfile -ExecutionPolicy Bypass -File "C:\dd-automation\Run-Automa
 Working Directory: C:\dd-automation
 ```
 
-### Manual Upload (DefectDojo CLI)
+### Manual Upload (DefectDojo CLI via GUI)
 
 The GUI includes an integrated launcher for the DefectDojo CLI tool for specialized manual upload scenarios.
 
@@ -593,6 +592,7 @@ DefectDojo = @{
 **Limitations**:
 - Requires manual test selection in GUI (no automatic test creation)
 - Only retrieves open alerts
+- Relies on custom parser in Defect Dojo Pro
 
 ### BurpSuite Integration
 
@@ -627,7 +627,6 @@ DefectDojo = @{
 - Only XML format supported (JSON/HTML not supported)
 - No automatic scan discovery
 - All reports upload to same DefectDojo test
-```
 
 ### Module Architecture
 
@@ -705,12 +704,6 @@ Invoke-Pester .\Tests\DefectDojo.Tests.ps1
 Invoke-Pester .\Tests\ -CodeCoverage .\modules\*.ps1
 ```
 
-**Troubleshooting CI Failures**:
-- Check workflow logs in PR "Checks" tab
-- Download `test-results.xml` artifact for detailed failure information
-- Reproduce locally using same test commands
-- Ensure all mocks and environment variable preservation patterns correct
-
 ## Testing
 
 The project maintains comprehensive test coverage with Pester 5+ test suite following consistent patterns for test isolation and environment preservation.
@@ -765,7 +758,7 @@ Invoke-Pester .\Tests\ -Output Detailed
 **Issue**: TenableWAS scan list empty  
 **Solution**: Ensure scans have completed at least once (`last_scan.scan_id` must exist). Check API credentials have read access to scans.
 
-**Issue**: GitHub repositories not appearing  
+**Issue**: GitHub repositories not appearing / unable to pull artifacts
 **Solution**: Verify PAT has `repo` and `security_events` scopes. Check organization membership and repository access. Review filtering rules (`IncludeRepos`, `ExcludeRepos`).
 
 **Issue**: DefectDojo CLI button shows error  
