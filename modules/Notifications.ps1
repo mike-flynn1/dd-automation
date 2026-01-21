@@ -19,7 +19,10 @@ function Send-WebhookNotification {
         [string]$Status = 'Info',
 
         [ValidateSet('PowerAutomate', 'Teams')]
-        [string]$WebhookType = 'PowerAutomate'
+        [string]$WebhookType = 'PowerAutomate',
+
+        [Parameter(Mandatory = $false)]
+        [string]$Details
     )
 
     if ([string]::IsNullOrWhiteSpace($WebhookUrl)) {
@@ -39,6 +42,46 @@ function Send-WebhookNotification {
     $payloadObject = switch ($WebhookType) {
         'PowerAutomate' {
             # Power Automate format with attachments array for adaptive cards
+            $bodyContent = @(
+                @{
+                    type = 'TextBlock'
+                    text = $Title
+                    weight = 'Bolder'
+                    size = 'Large'
+                    wrap = $true
+                }
+                @{
+                    type = 'TextBlock'
+                    text = $Message
+                    wrap = $true
+                    spacing = 'Medium'
+                }
+                @{
+                    type = 'FactSet'
+                    facts = @(
+                        @{
+                            title = 'Status'
+                            value = $Status
+                        }
+                        @{
+                            title = 'Timestamp'
+                            value = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+                        }
+                    )
+                }
+            )
+
+            # Add details section if provided
+            if (-not [string]::IsNullOrWhiteSpace($Details)) {
+                $bodyContent += @{
+                    type = 'TextBlock'
+                    text = $Details
+                    wrap = $true
+                    spacing = 'Medium'
+                    separator = $true
+                }
+            }
+
             @{
                 title = $Title
                 message = $Message
@@ -52,34 +95,7 @@ function Send-WebhookNotification {
                             type = 'AdaptiveCard'
                             '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'
                             version = '1.4'
-                            body = @(
-                                @{
-                                    type = 'TextBlock'
-                                    text = $Title
-                                    weight = 'Bolder'
-                                    size = 'Large'
-                                    wrap = $true
-                                }
-                                @{
-                                    type = 'TextBlock'
-                                    text = $Message
-                                    wrap = $true
-                                    spacing = 'Medium'
-                                }
-                                @{
-                                    type = 'FactSet'
-                                    facts = @(
-                                        @{
-                                            title = 'Status'
-                                            value = $Status
-                                        }
-                                        @{
-                                            title = 'Timestamp'
-                                            value = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-                                        }
-                                    )
-                                }
-                            )
+                            body = $bodyContent
                             msteams = @{
                                 width = 'Full'
                             }
@@ -90,6 +106,22 @@ function Send-WebhookNotification {
         }
         'Teams' {
             # Microsoft Teams MessageCard format
+            $sections = @(
+                @{
+                    activityTitle = $Title
+                    activitySubtitle = "Status: $Status"
+                    text = $Message
+                }
+            )
+
+            # Add details section if provided
+            if (-not [string]::IsNullOrWhiteSpace($Details)) {
+                $sections += @{
+                    title = 'Details'
+                    text = $Details
+                }
+            }
+
             @{
                 '@type' = 'MessageCard'
                 '@context' = 'https://schema.org/extensions'
@@ -97,13 +129,7 @@ function Send-WebhookNotification {
                 themeColor = $color
                 title = $Title
                 text = $Message
-                sections = @(
-                    @{
-                        activityTitle = $Title
-                        activitySubtitle = "Status: $Status"
-                        text = $Message
-                    }
-                )
+                sections = $sections
             }
         }
     }

@@ -198,6 +198,9 @@ function Save-Config {
             if ($null -eq $val -or $val -is [string]) {
                 $inner = if ($null -eq $val) { '' } else { $val }
                 $sb.AppendLine("        $key = '$inner'") | Out-Null
+            } elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
             } else {
                 $sb.AppendLine("        $key = $val") | Out-Null
             }

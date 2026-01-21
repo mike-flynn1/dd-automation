@@ -15,9 +15,18 @@
 function Invoke-Workflow-TenableWAS {
     param([hashtable]$Config)
 
+    $result = [PSCustomObject]@{
+        Tool = 'TenableWAS'
+        Success = 0
+        Failed = 0
+        Skipped = 0
+        Total = 0
+    }
+
     if (-not $Config.TenableWASSelectedScans -or $Config.TenableWASSelectedScans.Count -eq 0) {
         Write-Log -Message "No TenableWAS scans selected in configuration." -Level 'WARNING'
-        return
+        $result.Skipped = 1
+        return $result
     }
 
     # Initialize DefectDojo-specific variables if DefectDojo is enabled
@@ -25,21 +34,22 @@ function Invoke-Workflow-TenableWAS {
         $engagementId = $Config.DefectDojo.EngagementId
         if (-not $engagementId) {
             Write-Log -Message "No DefectDojo engagement ID configured; cannot create TenableWAS tests." -Level 'ERROR'
-            return
+            $result.Failed = 1
+            return $result
         }
 
         try {
             $tenableTestTypeId = Get-DefectDojoTestType -TestTypeName 'Tenable Scan'
         } catch {
             Write-Log -Message "Failed to lookup 'Tenable Scan' test type: $_" -Level 'ERROR'
-            return
+            $result.Failed = 1
+            return $result
         }
 
         $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
     }
 
-    $uploadErrors = 0
-    $totalScans = $Config.TenableWASSelectedScans.Count
+    $result.Total = $Config.TenableWASSelectedScans.Count
 
     foreach ($scan in $Config.TenableWASSelectedScans) {
         # Handle scan object vs string (CLI might pass objects if loaded from JSON, or strings if from simple config)
@@ -47,6 +57,7 @@ function Invoke-Workflow-TenableWAS {
         if ($scan -is [string]) {
              # Fallback if just a name is passed.
              Write-Log -Message "Scan config is string, expected object. Skipping $scan" -Level 'ERROR'
+             $result.Skipped++
              continue
         }
 
@@ -72,7 +83,7 @@ function Invoke-Workflow-TenableWAS {
                         $testId = $newTest.Id
                     } catch {
                         Write-Log -Message "Failed to create test ${serviceName}: $_" -Level 'ERROR'
-                        $uploadErrors++
+                        $result.Failed++
                         continue
                     }
                 } else {
@@ -81,18 +92,31 @@ function Invoke-Workflow-TenableWAS {
                 }
 
                 $filePathString = ([string]$exportedFile).Trim()
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $Config.DefectDojo.CloseOldFindings
+                $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $closeOldFindings
                 Write-Log -Message "TenableWAS scan report uploaded successfully to DefectDojo test: $serviceName"
             }
+            $result.Success++
         } catch {
-            $uploadErrors++
+            $result.Failed++
             Write-Log -Message "TenableWAS processing failed for $($scan.Name): $_" -Level 'ERROR'
         }
     }
+    
+    return $result
 }
 
 function Invoke-Workflow-SonarQube {
     param([hashtable]$Config)
+    
+    $result = [PSCustomObject]@{
+        Tool = 'SonarQube'
+        Success = 0
+        Failed = 0
+        Skipped = 0
+        Total = 1
+    }
+    
     Write-Log -Message "Processing SonarQube scan..."
     try {
         $apiScanConfigId = $Config.DefectDojo.APIScanConfigId
@@ -100,34 +124,51 @@ function Invoke-Workflow-SonarQube {
 
         if (-not $apiScanConfigId -or -not $testId) {
             Write-Log -Message "SonarQube processing requires APIScanConfigId and SonarQubeTestId in DefectDojo config." -Level 'ERROR'
-            return
+            $result.Failed = 1
+            return $result
         }
 
         Invoke-SonarQubeProcessing -ApiScanConfiguration $apiScanConfigId -Test $testId
         Write-Log -Message "SonarQube processing completed."
+        $result.Success = 1
     } catch {
         Write-Log -Message "SonarQube processing failed: $_" -Level 'ERROR'
+        $result.Failed = 1
     }
+    
+    return $result
 }
 
 function Invoke-Workflow-BurpSuite {
     param([hashtable]$Config)
+    
+    $result = [PSCustomObject]@{
+        Tool = 'BurpSuite'
+        Success = 0
+        Failed = 0
+        Skipped = 0
+        Total = 0
+    }
+    
     Write-Log -Message "Starting BurpSuite XML report processing..."
     try {
         $xmlFiles = Get-BurpSuiteReports -FolderPath $Config.Paths.BurpSuiteXmlFolder
 
         if (-not $xmlFiles -or $xmlFiles.Count -eq 0) {
             Write-Log -Message "No BurpSuite XML files found in folder: $($Config.Paths.BurpSuiteXmlFolder)" -Level 'WARNING'
-            return
+            $result.Skipped = 1
+            return $result
         }
 
         Write-Log -Message "Found $($xmlFiles.Count) BurpSuite XML report(s)"
+        $result.Total = 1  # Processing single file
 
         if ($Config.Tools.DefectDojo) {
             $burpTestId = $Config.DefectDojo.BurpSuiteTestId
             if (-not $burpTestId) {
                 Write-Log -Message "No BurpSuite test ID configured for DefectDojo upload" -Level 'WARNING'
-                return
+                $result.Skipped = 1
+                return $result
             }
 
             $xmlFile = $xmlFiles[0]
@@ -140,25 +181,41 @@ function Invoke-Workflow-BurpSuite {
             try {
                 Write-Log -Message "Uploading $fileName to DefectDojo test ID: $burpTestId"
                 $filePathString = ([string]$xmlFile).Trim()
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $burpTestId -ScanType 'Burp Scan' -CloseOldFindings $Config.DefectDojo.CloseOldFindings
+                $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
+                Upload-DefectDojoScan -FilePath $filePathString -TestId $burpTestId -ScanType 'Burp Scan' -CloseOldFindings $closeOldFindings
                 Write-Log -Message "Successfully uploaded $fileName"
+                $result.Success = 1
             } catch {
                 Write-Log -Message "Failed to upload $fileName : $_" -Level 'ERROR'
+                $result.Failed = 1
             }
         }
     } catch {
         Write-Log -Message "BurpSuite processing failed: $_" -Level 'ERROR'
+        $result.Failed = 1
     }
+    
+    return $result
 }
 
 function Invoke-Workflow-GitHubCodeQL {
     param([hashtable]$Config)
+    
+    $result = [PSCustomObject]@{
+        Tool = 'GitHub CodeQL'
+        Success = 0
+        Failed = 0
+        Skipped = 0
+        Total = 0
+    }
+    
     Write-Log -Message "Starting GitHub CodeQL download..."
     try {
         $orgs = @($Config.GitHub.Orgs)
         if (-not $orgs -or $orgs.Count -eq 0) {
             Write-Log -Message "No GitHub organizations configured. Skipping GitHub processing." -Level 'WARNING'
-            return
+            $result.Skipped = 1
+            return $result
         }
 
         GitHub-CodeQLDownload -Owners $orgs
@@ -167,15 +224,18 @@ function Invoke-Workflow-GitHubCodeQL {
         if ($Config.Tools.DefectDojo) {
             Write-Log -Message "Uploading GitHub CodeQL reports to DefectDojo..."
             $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
-            $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
-            $uploadErrors = 0
+            $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+            $result.Total = $sarifFiles.Count
 
             $engagementId = $Config.DefectDojo.EngagementId
             if (-not $engagementId) {
                 Write-Log -Message "No DefectDojo engagement ID configured; skipping GitHub uploads." -Level 'WARNING'
-                return
+                $result.Skipped = $result.Total
+                return $result
             }
             $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
+            
+            $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
             
             foreach ($file in $sarifFiles) {
                 try {
@@ -200,6 +260,7 @@ function Invoke-Workflow-GitHubCodeQL {
                             $testId = $newTest.Id
                         } catch {
                             Write-Log -Message "Failed to create test $serviceName : $_" -Level 'ERROR'
+                            $result.Failed++
                             continue
                         }
                     } else {
@@ -207,9 +268,10 @@ function Invoke-Workflow-GitHubCodeQL {
                         $testId = $existingTest.Id
                     }
 
-                    Upload-DefectDojoScan -FilePath $file -TestId $testId -ScanType 'SARIF' -CloseOldFindings $Config.DefectDojo.CloseOldFindings
+                    Upload-DefectDojoScan -FilePath $file -TestId $testId -ScanType 'SARIF' -CloseOldFindings $closeOldFindings
+                    $result.Success++
                 } catch {
-                    $uploadErrors++
+                    $result.Failed++
                     Write-Log -Message "Failed to upload $file to DefectDojo: $_" -Level 'ERROR'
                 }
             }
@@ -219,17 +281,30 @@ function Invoke-Workflow-GitHubCodeQL {
         }
     } catch {
         Write-Log -Message "GitHub CodeQL processing failed: $_" -Level 'ERROR'
+        $result.Failed = 1
     }
+    
+    return $result
 }
 
 function Invoke-Workflow-GitHubSecretScanning {
     param([hashtable]$Config)
+    
+    $result = [PSCustomObject]@{
+        Tool = 'GitHub Secret Scanning'
+        Success = 0
+        Failed = 0
+        Skipped = 0
+        Total = 0
+    }
+    
     Write-Log -Message "Starting GitHub Secret Scanning download..."
     try {
         $orgs = @($Config.GitHub.Orgs)
         if (-not $orgs -or $orgs.Count -eq 0) {
             Write-Log -Message 'No GitHub organizations configured.' -Level 'WARNING'
-            return
+            $result.Skipped = 1
+            return $result
         }
 
         GitHub-SecretScanDownload -Owners $orgs
@@ -238,11 +313,13 @@ function Invoke-Workflow-GitHubSecretScanning {
         if ($Config.Tools.DefectDojo) {
             Write-Log -Message "Uploading GitHub Secret Scanning reports to DefectDojo..."
             $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubSecretScanning'
-            $jsonFiles = Get-ChildItem -Path $downloadRoot -Filter '*-secrets.json' -Recurse | Select-Object -ExpandProperty FullName
-            $uploadErrors = 0
+            $jsonFiles = Get-ChildItem -Path $downloadRoot -Filter '*-secrets.json' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+            $result.Total = $jsonFiles.Count
             
             $engagementId = $Config.DefectDojo.EngagementId
             $existingTests = Get-DefectDojoTests -EngagementId $engagementId
+
+            $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
 
             foreach ($file in $jsonFiles) {
                 try {
@@ -267,6 +344,7 @@ function Invoke-Workflow-GitHubSecretScanning {
                             $testId = $newTest.Id
                         } catch {
                             Write-Log -Message "Failed to create test $serviceName : $_" -Level 'ERROR'
+                            $result.Failed++
                             continue
                         }
                     } else {
@@ -274,9 +352,10 @@ function Invoke-Workflow-GitHubSecretScanning {
                         $testId = $existingTest.Id
                     }
 
-                    Upload-DefectDojoScan -FilePath $file -TestId $testId -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $Config.DefectDojo.CloseOldFindings
+                    Upload-DefectDojoScan -FilePath $file -TestId $testId -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $closeOldFindings
+                    $result.Success++
                 } catch {
-                    $uploadErrors++
+                    $result.Failed++
                     Write-Log -Message "Failed to upload $file to DefectDojo: $_" -Level 'ERROR'
                 }
             }
@@ -286,17 +365,30 @@ function Invoke-Workflow-GitHubSecretScanning {
         }
     } catch {
         Write-Log -Message "GitHub Secret Scanning processing failed: $_" -Level 'ERROR'
+        $result.Failed = 1
     }
+    
+    return $result
 }
 
 function Invoke-Workflow-GitHubDependabot {
     param([hashtable]$Config)
+    
+    $result = [PSCustomObject]@{
+        Tool = 'GitHub Dependabot'
+        Success = 0
+        Failed = 0
+        Skipped = 0
+        Total = 0
+    }
+    
     Write-Log -Message "Starting GitHub Dependabot download..."
     try {
         $orgs = @($Config.GitHub.Orgs)
         if (-not $orgs -or $orgs.Count -eq 0) {
             Write-Log -Message 'No GitHub organizations configured.' -Level 'WARNING'
-            return
+            $result.Skipped = 1
+            return $result
         }
 
         $dependabotFiles = GitHub-DependabotDownload -Owners $orgs
@@ -304,23 +396,29 @@ function Invoke-Workflow-GitHubDependabot {
 
         if (-not $dependabotFiles -or $dependabotFiles.Count -eq 0) {
             Write-Log -Message 'No open Dependabot alerts downloaded; skipping uploads.'
-            return
+            $result.Skipped = 1
+            return $result
         }
+
+        $result.Total = $dependabotFiles.Count
 
         if ($Config.Tools.DefectDojo) {
             $dependabotTestId = $Config.DefectDojo.GitHubDependabotTestId
             if (-not $dependabotTestId) {
                 Write-Log -Message 'No DefectDojo Dependabot test ID configured; skipping uploads.' -Level 'WARNING'
-                return
+                $result.Skipped = $result.Total
+                return $result
             }
 
-            $uploadErrors = 0
+            $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
+
             foreach ($file in $dependabotFiles) {
                 try {
-                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTestId -ScanType 'Universal Parser - GitHub Dependabot Aert5s' -CloseOldFindings $Config.DefectDojo.CloseOldFindings
+                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTestId -ScanType 'Universal Parser - GitHub Dependabot Aert5s' -CloseOldFindings $closeOldFindings
                     Write-Log -Message "Uploaded Dependabot JSON: $([System.IO.Path]::GetFileName($file))"
+                    $result.Success++
                 } catch {
-                    $uploadErrors++
+                    $result.Failed++
                     Write-Log -Message "Failed to upload $file to DefectDojo: $_" -Level 'ERROR'
                 }
             }
@@ -330,5 +428,8 @@ function Invoke-Workflow-GitHubDependabot {
         }
     } catch {
         Write-Log -Message "GitHub Dependabot processing failed: $_" -Level 'ERROR'
+        $result.Failed = 1
     }
+    
+    return $result
 }

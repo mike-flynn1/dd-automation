@@ -80,24 +80,27 @@ try {
     }
 
     # 4. Execute Workflows
-    $errorsOccurred = $false
+    $workflowResults = @()
     
     # Process TenableWAS
     if ($config.Tools.TenableWAS) {
         Write-Log -Message "Workflow: TenableWAS started."
-        Invoke-Workflow-TenableWAS -Config $config
+        $result = Invoke-Workflow-TenableWAS -Config $config
+        $workflowResults += $result
     }
 
     # Process SonarQube
     if ($config.Tools.SonarQube) {
         Write-Log -Message "Workflow: SonarQube started."
-        Invoke-Workflow-SonarQube -Config $config
+        $result = Invoke-Workflow-SonarQube -Config $config
+        $workflowResults += $result
     }
 
     # Process BurpSuite
     if ($config.Tools.BurpSuite) {
         Write-Log -Message "Workflow: BurpSuite started."
-        Invoke-Workflow-BurpSuite -Config $config
+        $result = Invoke-Workflow-BurpSuite -Config $config
+        $workflowResults += $result
     }
 
     # Process GitHub Features
@@ -105,30 +108,66 @@ try {
         # Config structure normalization handles legacy keys, so we check the new structure
         if ($config.Tools.GitHub.CodeQL) {
             Write-Log -Message "Workflow: GitHub CodeQL started."
-            Invoke-Workflow-GitHubCodeQL -Config $config
+            $result = Invoke-Workflow-GitHubCodeQL -Config $config
+            $workflowResults += $result
         }
         if ($config.Tools.GitHub.SecretScanning) {
             Write-Log -Message "Workflow: GitHub Secret Scanning started."
-            Invoke-Workflow-GitHubSecretScanning -Config $config
+            $result = Invoke-Workflow-GitHubSecretScanning -Config $config
+            $workflowResults += $result
         }
         if ($config.Tools.GitHub.Dependabot) {
             Write-Log -Message "Workflow: GitHub Dependabot started."
-            Invoke-Workflow-GitHubDependabot -Config $config
+            $result = Invoke-Workflow-GitHubDependabot -Config $config
+            $workflowResults += $result
         }
     }
 
     Write-Log -Message "Automation run completed."
 
-    # 4. Notifications
+    # 5. Aggregate Results
+    $totalSuccess = ($workflowResults | Measure-Object -Property Success -Sum).Sum
+    $totalFailed = ($workflowResults | Measure-Object -Property Failed -Sum).Sum
+    $totalSkipped = ($workflowResults | Measure-Object -Property Skipped -Sum).Sum
+    $totalProcessed = ($workflowResults | Measure-Object -Property Total -Sum).Sum
+
+    # 6. Notifications
     if ($config.Notifications -and $config.Notifications.WebhookUrl) {
-        # Simple success notification - could be enhanced to report specific failures
-        # For now, we just report completion.
         $webhookType = if ($config.Notifications.WebhookType) { $config.Notifications.WebhookType } else { 'PowerAutomate' }
+        
+        # Determine overall status
+        $overallStatus = 'Success'
+        $title = "DDP Automation Run Completed"
+        $message = "Scheduled PSScript automation run finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')."
+        
+        if ($totalFailed -gt 0) {
+            $overallStatus = 'Warning'
+            $title = "DDP Automation Run Completed (Warning)"
+            $message = "Some PSScript scan imports completed with errors."
+        }
+        
+        if ($totalFailed -eq $totalProcessed -and $totalProcessed -gt 0) {
+            $overallStatus = 'Error'
+            $title = "DDP Automation Run Failed"
+            $message = "All PSScript scan imports failed."
+        }
+        
+        # Build detailed status
+        $detailsArray = @()
+        foreach ($result in $workflowResults) {
+            if ($result.Total -gt 0 -or $result.Skipped -gt 0) {
+                $status = if ($result.Failed -gt 0) { '⚠' } elseif ($result.Success -gt 0) { '✓' } else { '⊘' }
+                $detailsArray += "${status} **$($result.Tool)**: $($result.Success) succeeded, $($result.Failed) failed, $($result.Skipped) skipped (Total: $($result.Total))"
+            }
+        }
+        $details = $detailsArray -join "`n`n"
+        
         Send-WebhookNotification -WebhookUrl $config.Notifications.WebhookUrl `
-                                 -Title "DD Automation Completed" `
-                                 -Message "Scheduled automation run finished successfully at $(Get-Date)." `
-                                 -Status 'Success' `
-                                 -WebhookType $webhookType
+                                 -Title $title `
+                                 -Message $message `
+                                 -Status $overallStatus `
+                                 -WebhookType $webhookType `
+                                 -Details $details
     }
 
 } catch {
@@ -140,9 +179,10 @@ try {
         $webhookType = if ($config.Notifications.WebhookType) { $config.Notifications.WebhookType } else { 'PowerAutomate' }
         Send-WebhookNotification -WebhookUrl $config.Notifications.WebhookUrl `
                                  -Title "DD Automation Failed" `
-                                 -Message "Run failed with error: $errorMsg" `
+                                 -Message "Automation run failed with critical error." `
                                  -Status 'Error' `
-                                 -WebhookType $webhookType
+                                 -WebhookType $webhookType `
+                                 -Details "**Error Details:**`n$errorMsg"
     }
     exit 1
 }
