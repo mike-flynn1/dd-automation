@@ -40,6 +40,7 @@
         GitHubDependabotTestId = 0  # Enter the DefectDojo test Id for GitHub Dependabot alerts
         MinimumSeverity   = 'Low'  # Enter the minimum severity to upload
         APIScanConfigId = 1
+        CloseOldFindings  = $false  # When $true, old findings will be closed on reimport
     }
 
     # GitHub Organizations to process (one or many)
