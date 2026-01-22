@@ -31,7 +31,7 @@ function Invoke-Workflow-TenableWAS {
 
     # Initialize DefectDojo-specific variables if DefectDojo is enabled
     if ($Config.Tools.DefectDojo) {
-        $engagementId = $Config.DefectDojo.EngagementId
+        $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'TenableWAS'
         if (-not $engagementId) {
             Write-Log -Message "No DefectDojo engagement ID configured; cannot create TenableWAS tests." -Level 'ERROR'
             $result.Failed = 1
@@ -166,9 +166,35 @@ function Invoke-Workflow-BurpSuite {
         if ($Config.Tools.DefectDojo) {
             $burpTestId = $Config.DefectDojo.BurpSuiteTestId
             if (-not $burpTestId) {
-                Write-Log -Message "No BurpSuite test ID configured for DefectDojo upload" -Level 'WARNING'
-                $result.Skipped = 1
-                return $result
+                # No pre-configured TestId - try to auto-create under engagement
+                $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'BurpSuite'
+                if (-not $engagementId) {
+                    Write-Log -Message "No BurpSuite test ID or engagement ID configured for DefectDojo upload" -Level 'WARNING'
+                    $result.Skipped = 1
+                    return $result
+                }
+                
+                # Look for existing test or create new one
+                $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
+                $testName = "BurpSuite Scan"
+                $existingTest = $existingTests | Where-Object { $_.Title -eq $testName } | Select-Object -First 1
+                
+                if ($existingTest) {
+                    Write-Log -Message "Using existing DefectDojo test: $testName (ID: $($existingTest.Id))"
+                    $burpTestId = $existingTest.Id
+                } else {
+                    Write-Log -Message "Creating new DefectDojo test: $testName"
+                    try {
+                        $burpTestTypeId = Get-DefectDojoTestType -TestTypeName 'Burp Scan'
+                        $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $testName -TestType $burpTestTypeId
+                        Write-Log -Message "Test created successfully: $testName (ID: $($newTest.Id))"
+                        $burpTestId = $newTest.Id
+                    } catch {
+                        Write-Log -Message "Failed to create BurpSuite test: $_" -Level 'ERROR'
+                        $result.Failed = 1
+                        return $result
+                    }
+                }
             }
 
             $xmlFile = $xmlFiles[0]
@@ -227,7 +253,7 @@ function Invoke-Workflow-GitHubCodeQL {
             $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
             $result.Total = $sarifFiles.Count
 
-            $engagementId = $Config.DefectDojo.EngagementId
+            $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'CodeQL'
             if (-not $engagementId) {
                 Write-Log -Message "No DefectDojo engagement ID configured; skipping GitHub uploads." -Level 'WARNING'
                 $result.Skipped = $result.Total
@@ -316,7 +342,7 @@ function Invoke-Workflow-GitHubSecretScanning {
             $jsonFiles = Get-ChildItem -Path $downloadRoot -Filter '*-secrets.json' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
             $result.Total = $jsonFiles.Count
             
-            $engagementId = $Config.DefectDojo.EngagementId
+            $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'SecretScan'
             $existingTests = Get-DefectDojoTests -EngagementId $engagementId
 
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
@@ -405,9 +431,35 @@ function Invoke-Workflow-GitHubDependabot {
         if ($Config.Tools.DefectDojo) {
             $dependabotTestId = $Config.DefectDojo.GitHubDependabotTestId
             if (-not $dependabotTestId) {
-                Write-Log -Message 'No DefectDojo Dependabot test ID configured; skipping uploads.' -Level 'WARNING'
-                $result.Skipped = $result.Total
-                return $result
+                # No pre-configured TestId - try to auto-create under engagement
+                $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'Dependabot'
+                if (-not $engagementId) {
+                    Write-Log -Message 'No Dependabot test ID or engagement ID configured; skipping uploads.' -Level 'WARNING'
+                    $result.Skipped = $result.Total
+                    return $result
+                }
+                
+                # Look for existing test or create new one
+                $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
+                $testName = "GitHub Dependabot"
+                $existingTest = $existingTests | Where-Object { $_.Title -eq $testName } | Select-Object -First 1
+                
+                if ($existingTest) {
+                    Write-Log -Message "Using existing DefectDojo test: $testName (ID: $($existingTest.Id))"
+                    $dependabotTestId = $existingTest.Id
+                } else {
+                    Write-Log -Message "Creating new DefectDojo test: $testName"
+                    try {
+                        $dependabotTestTypeId = Get-DefectDojoTestType -TestTypeName 'GitHub Vulnerability Scan'
+                        $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $testName -TestType $dependabotTestTypeId
+                        Write-Log -Message "Test created successfully: $testName (ID: $($newTest.Id))"
+                        $dependabotTestId = $newTest.Id
+                    } catch {
+                        Write-Log -Message "Failed to create Dependabot test: $_" -Level 'ERROR'
+                        $result.Failed = 1
+                        return $result
+                    }
+                }
             }
 
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }

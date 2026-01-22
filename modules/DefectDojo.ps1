@@ -281,6 +281,44 @@ function New-DefectDojoTest {
     }
 }
 
+function Get-EngagementIdForTool {
+    <#
+    .SYNOPSIS
+        Returns the appropriate EngagementId for a given tool, with fallback to default.
+    .DESCRIPTION
+        Checks for a tool-specific engagement ID override in the config. If not found
+        or if the value is 0/empty, falls back to the default EngagementId.
+        This enables CLI/config-based automation to route different tools to different
+        engagements (e.g., separate SAST and DAST engagements).
+    .PARAMETER Config
+        Configuration hashtable containing DefectDojo settings.
+    .PARAMETER Tool
+        Tool name: TenableWAS, BurpSuite, CodeQL, SecretScan, Dependabot
+    .OUTPUTS
+        Integer engagement ID.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('TenableWAS', 'BurpSuite', 'CodeQL', 'SecretScan', 'Dependabot')]
+        [string]$Tool
+    )
+    
+    $toolEngagementKey = "${Tool}EngagementId"
+    
+    # Check for tool-specific override (must exist and be non-zero)
+    if ($Config.DefectDojo.ContainsKey($toolEngagementKey) -and $Config.DefectDojo[$toolEngagementKey]) {
+        Write-Log -Message "Using tool-specific engagement ID for ${Tool}: $($Config.DefectDojo[$toolEngagementKey])" -Level 'INFO'
+        return $Config.DefectDojo[$toolEngagementKey]
+    }
+    
+    # Fall back to default EngagementId
+    return $Config.DefectDojo.EngagementId
+}
+
 #DEBUG
 # Get-DefectDojoProducts | ForEach-Object {
 #     Write-Log -Message "Product: $($_.Name) (Id: $($_.Id))" -Level 'INFO'
