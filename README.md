@@ -443,7 +443,7 @@ DefectDojo = @{
 - If using per-tool engagements, ensure all configured engagements exist in DefectDojo before running
 - SonarQube does not support engagement overrides (uses API Scan Configuration special case)
 - 100% backward compatible - existing configurations without per-tool overrides continue to work
-- Reccomended that users use separate config files if doing separate CI/CD and GUI runs. Since the CLI supports custom config files, setup with required CI/CD values from example config and set up another for GUI runs. 
+- Recommended that users use separate config files if doing separate CI/CD and GUI runs. Since the CLI supports custom config files, setup with required CI/CD values from example config and set up another for GUI runs. 
 
 ### Manual Upload (DefectDojo CLI via GUI)
 
