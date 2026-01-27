@@ -48,6 +48,9 @@ try {
     
     $config = Get-Config -ConfigPath $ConfigPath
     
+    # Set the active config path so internal module calls use the same config
+    Set-ActiveConfigPath -Path $ConfigPath
+    
     # Validate Configuration
     Write-Log -Message "Validating configuration..."
     try {

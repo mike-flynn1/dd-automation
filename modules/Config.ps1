@@ -3,12 +3,58 @@
     Module for loading and validating the automation tool configuration.
 #>
 
+# Global-scoped variable to track the active config path across all module instances
+# Using global scope because Config.ps1 is dot-sourced by multiple modules,
+# and script scope would be isolated per dot-source operation
+if (-not $global:DDAutomation_ActiveConfigPath) {
+    $global:DDAutomation_ActiveConfigPath = $null
+}
+
+function Set-ActiveConfigPath {
+    <#
+    .SYNOPSIS
+        Sets the active configuration path for the current session.
+    .DESCRIPTION
+        Stores the configuration file path in a global variable so that
+        internal Get-Config calls across all modules use the correct config file.
+    .PARAMETER Path
+        The configuration file path to use.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    
+    $global:DDAutomation_ActiveConfigPath = $Path
+    Write-Verbose "Active config path set to: $Path"
+}
+
 function Get-Config {
     [CmdletBinding()]
     param(
-        [string]$ConfigPath   = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1'),
+        [string]$ConfigPath,
         [string]$TemplatePath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1.example')
     )
+
+    # Determine which config path to use:
+    # 1. Explicit parameter (highest priority)
+    # 2. Global active path (set by CLI/GUI at startup, shared across all modules)
+    # 3. Default config.psd1 (fallback)
+    if (-not $ConfigPath) {
+        if ($global:DDAutomation_ActiveConfigPath) {
+            $ConfigPath = $global:DDAutomation_ActiveConfigPath
+            Write-Verbose "Using active config path: $ConfigPath"
+        } else {
+            $ConfigPath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')
+            Write-Verbose "Using default config path: $ConfigPath"
+        }
+    }
+    
+    # Store the config path for future internal calls (if not already set)
+    if (-not $global:DDAutomation_ActiveConfigPath) {
+        $global:DDAutomation_ActiveConfigPath = $ConfigPath
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($ConfigPath) -and (Test-Path -Path $ConfigPath)) {
         Write-Verbose "Loading configuration from $ConfigPath"
