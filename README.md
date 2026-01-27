@@ -4,9 +4,9 @@
 
 This PowerShell-based toolset automates the export and import of security findings between various tools:
 
- This PowerShell-based toolset automates the export and import of security findings between various tools:
+
  - Tenable WAS → Defect Dojo
- - SonarQube → Defect Dojo (reimport direct from Defect Dojo) (Depracated by DDP Global Connector)
+ - SonarQube → Defect Dojo (reimport direct from Defect Dojo) (Deprecated by DDP Global Connector)
  - GitHub CodeQL SARIF reports → Defect Dojo (Implemented)
  - GitHub Secret Scanning JSON → Defect Dojo (Implemented)
  - GitHub Dependabot JSON → Defect Dojo (Implemented)
@@ -136,7 +136,7 @@ Copy-Item .\config\config.psd1.example .\config\config.psd1
 ### Configuration File Structure
 
 The `config\config.psd1` file uses PowerShell data file format (hashtable) for easy editing.
-It will be easiest to copy the config file and edit as needed as mentioned in the setup seciton.
+It will be easiest to copy the config file and edit as needed as mentioned in the setup section.
 
 ```powershell
 @{
@@ -612,7 +612,7 @@ GitHub = @{
 1. For each repository (after filtering):
    - **GET** `/repos/{owner}/{repo}/secret-scanning/alerts?state=open` - Open alerts
    - Save to `%TEMP%\GitHubSecretScanning\{repo-name}-secrets.json`
-2. Upload to DefectDojo with scan type "Github Vulnerability Scan"
+2. Upload to DefectDojo with scan type "Universal Parser - GitHub Secret Scanning"
 
 **Configuration**:
 ```powershell
