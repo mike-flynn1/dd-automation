@@ -351,6 +351,11 @@ function Invoke-Workflow-GitHubSecretScanning {
             }
             
             $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'SecretScan'
+            if (-not $engagementId) {
+                Write-Log -Message "No DefectDojo engagement ID configured; skipping GitHub Secret Scanning uploads." -Level 'WARNING'
+                $result.Skipped = $result.Total
+                return $result
+            }
             $existingTests = Get-DefectDojoTests -EngagementId $engagementId
 
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }

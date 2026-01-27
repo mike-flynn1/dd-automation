@@ -66,6 +66,33 @@ Describe 'Initialize-Log' {
         (Get-Content $base -Raw) | Should -Match '===== Log started at '
         (Get-Content $base -Raw) | Should -Not -Match 'old'
     }
+
+    It 'Continues logging initialization when rotation encounters file lock errors' {
+        $logDirectory = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        New-Item -Path $logDirectory -ItemType Directory | Out-Null
+
+        $base = Join-Path $logDirectory 'locked.log'
+        'existing' | Out-File -FilePath $base -Encoding utf8
+        'archived' | Out-File -FilePath "$base.1" -Encoding utf8
+
+        # Mock Move-Item to simulate file lock error on first call, but succeed on subsequent calls
+        $callCount = 0
+        $originalMoveItem = Get-Command Move-Item
+        Mock Move-Item {
+            $callCount++
+            if ($callCount -eq 1) {
+                throw [System.IO.IOException]"The process cannot access the file because it is being used by another process."
+            }
+            & $originalMoveItem @PSBoundParameters
+        } -ParameterFilter { $Path -like "$base*" }
+
+        # Should not throw despite Move-Item error
+        { Initialize-Log -LogDirectory $logDirectory -LogFileName 'locked.log' -MaxLogFiles 2 } | Should -Not -Throw
+
+        # New log file should still be created
+        Test-Path $base | Should -BeTrue
+        (Get-Content $base -Raw) | Should -Match '===== Log started at '
+    }
 }
 
 Describe 'Write-Log' {

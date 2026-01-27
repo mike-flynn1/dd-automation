@@ -22,18 +22,23 @@ function Invoke-LogRotation {
     if ($MaxLogFiles -lt 2) { return }
 
     # Delete the oldest file first, then shift down the chain
-    for ($i = $MaxLogFiles - 1; $i -ge 1; $i--) {
-        $target = if ($i -eq 0) { $BasePath } else { "$BasePath.$i" }
-        $sourceIndex = $i - 1
-        $source = if ($sourceIndex -eq 0) { $BasePath } else { "$BasePath.$sourceIndex" }
+    try {
+        for ($i = $MaxLogFiles - 1; $i -ge 1; $i--) {
+            $target = "$BasePath.$i"
+            $sourceIndex = $i - 1
+            $source = if ($sourceIndex -eq 0) { $BasePath } else { "$BasePath.$sourceIndex" }
 
-        if (Test-Path -Path $target) {
-            Remove-Item -Path $target -Force
-        }
+            if (Test-Path -Path $target) {
+                Remove-Item -Path $target -Force -ErrorAction SilentlyContinue
+            }
 
-        if (Test-Path -Path $source) {
-            Move-Item -Path $source -Destination $target -Force
+            if (Test-Path -Path $source) {
+                Move-Item -Path $source -Destination $target -Force -ErrorAction SilentlyContinue
+            }
         }
+    } catch {
+        Write-Host "Warning: Log rotation encountered an error (file may be locked): $_" -ForegroundColor Yellow
+        # Continue with logging initialization despite rotation failure
     }
 }
 
