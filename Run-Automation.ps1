@@ -32,7 +32,7 @@ $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'modules\Notifications.ps1')
 
 # Initialize Logging
-Initialize-Log -LogDirectory (Join-Path $scriptDir 'logs') -LogFileName 'DDAutomation_CLI.log'
+Initialize-Log -LogDirectory (Join-Path $scriptDir 'logs') -LogFileName 'DDAutomation_CLI.log' -MaxLogFiles 3
 Write-Log -Message "DD Automation CLI started." -Level 'INFO'
 
 try {

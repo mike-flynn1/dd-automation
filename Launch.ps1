@@ -46,7 +46,7 @@ $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'AutomationWorkflows.ps1')
 
 # Initialize logging
-Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomationLauncher_Renewed.log' -Overwrite
+Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomation_GUI.log' -MaxLogFiles 3
 Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
 
 $script:gitHubFeatureMap = [ordered]@{

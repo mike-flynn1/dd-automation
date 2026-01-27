@@ -17,6 +17,55 @@ Describe 'Initialize-Log' {
         $content = Get-Content -Path $logFile -Raw
         $content | Should -Match '===== Log started at '
     }
+
+    It 'Rotates existing log files up to MaxLogFiles' {
+        $logDirectory = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        New-Item -Path $logDirectory -ItemType Directory | Out-Null
+
+        $base = Join-Path $logDirectory 'rotate.log'
+        'first'  | Out-File -FilePath $base -Encoding utf8
+        'second' | Out-File -FilePath "$base.1" -Encoding utf8
+        'third'  | Out-File -FilePath "$base.2" -Encoding utf8
+
+        Initialize-Log -LogDirectory $logDirectory -LogFileName 'rotate.log' -MaxLogFiles 3
+
+        Test-Path "$base.2" | Should -BeTrue
+        (Get-Content "$base.2" -Raw) | Should -Match 'second'
+        Test-Path "$base.1" | Should -BeTrue
+        (Get-Content "$base.1" -Raw) | Should -Match 'first'
+        Test-Path $base | Should -BeTrue
+        (Get-Content $base -Raw) | Should -Match '===== Log started at '
+    }
+
+    It 'Does not rotate when MaxLogFiles is 1' {
+        $logDirectory = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        New-Item -Path $logDirectory -ItemType Directory | Out-Null
+
+        $base = Join-Path $logDirectory 'single.log'
+        'keep' | Out-File -FilePath $base -Encoding utf8
+
+        Initialize-Log -LogDirectory $logDirectory -LogFileName 'single.log' -MaxLogFiles 1
+
+        Test-Path "$base.1" | Should -BeFalse
+        (Get-Content $base -Raw) | Should -Match 'keep'
+        (Get-Content $base -Raw) | Should -Match '===== Log started at '
+    }
+
+    It 'Overwrite skips rotation and recreates file' {
+        $logDirectory = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        New-Item -Path $logDirectory -ItemType Directory | Out-Null
+
+        $base = Join-Path $logDirectory 'overwrite.log'
+        'old' | Out-File -FilePath $base -Encoding utf8
+        'prior' | Out-File -FilePath "$base.1" -Encoding utf8
+
+        Initialize-Log -LogDirectory $logDirectory -LogFileName 'overwrite.log' -MaxLogFiles 3 -Overwrite
+
+        Test-Path "$base.1" | Should -BeTrue
+        (Get-Content "$base.1" -Raw) | Should -Match 'prior'
+        (Get-Content $base -Raw) | Should -Match '===== Log started at '
+        (Get-Content $base -Raw) | Should -Not -Match 'old'
+    }
 }
 
 Describe 'Write-Log' {

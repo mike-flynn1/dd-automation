@@ -30,7 +30,7 @@ dd-automation/
 │   ├── config.psd1                  # User configuration (gitignored)
 │   └── config.psd1.example          # Configuration template
 ├── logs/
-│   ├── DDAutomationLauncher_Renewed.log  # GUI mode log file
+│   ├── DDAutomation_GUI.log              # GUI mode log file
 │   └── DDAutomation_CLI.log         # CLI mode log file
 ├── modules/                         # Core functionality modules
 │   ├── Config.ps1                   # Configuration loading/validation
@@ -287,7 +287,7 @@ ExcludeRepos = @(
 - Supports PowerShell wildcards: `*` (any characters), `?` (single character)
 - Case-insensitive matching
 - Filter order: Archived → Include → Exclude
-- All filtering decisions logged to `logs/DDAutomationLauncher_Renewed.log`
+- All filtering decisions logged to `logs/DDAutomation_GUI.log`
 
 ## Usage
 
@@ -467,7 +467,7 @@ The GUI includes an integrated launcher for the DefectDojo CLI tool for speciali
 
 **Troubleshooting**:
 - Error dialog appears if `DOJO_API_KEY` not set or CLI executable missing
-- Check GUI status log and `logs\DDAutomationLauncher_Renewed.log` for detailed errors
+- Check GUI status log and `logs\DDAutomation_GUI.log` for detailed errors
 
 ## Integration Details
 
@@ -506,7 +506,7 @@ TenableWASScanNames = @(
 
 **File Locations**:
 - Exported reports: `%TEMP%\{scanName}.csv`
-- Log file: `logs\DDAutomationLauncher_Renewed.log`
+- Log file: `logs\DDAutomation_GUI.log`
 
 **Limitations**:
 - Only exports most recent scan per configuration (`last_scan.scan_id`)
@@ -833,7 +833,7 @@ Invoke-Pester .\Tests\ -Output Detailed
 
 All operations logged to timestamped files in `logs\` directory:
 
-- **GUI Mode**: `logs\DDAutomationLauncher_Renewed.log`
+- **GUI Mode**: `logs\DDAutomation_GUI.log`
 - **CLI Mode**: `logs\DDAutomation_CLI.log`
 
 Log entries include timestamp, level (INFO/WARNING/ERROR), and detailed messages for troubleshooting.
