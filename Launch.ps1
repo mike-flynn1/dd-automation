@@ -607,6 +607,13 @@ function Prepopulate-FormFromConfig {
     }
     Update-GitHubControlState
 
+    # Enable DefectDojo-dependent controls if DefectDojo checkbox is checked
+    # (setting .Checked programmatically doesn't fire CheckedChanged event)
+    if ($script:chkBoxes['DefectDojo'].Checked) {
+        $script:cmbDDSeverity.Enabled = $true
+        $script:chkDDCloseFindings.Enabled = $true
+    }
+
     if ($script:chkBoxes['TenableWAS'].Checked) {
         Load-TenableScans
     }
