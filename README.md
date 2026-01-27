@@ -6,7 +6,7 @@ This PowerShell-based toolset automates the export and import of security findin
 
  This PowerShell-based toolset automates the export and import of security findings between various tools:
  - Tenable WAS → Defect Dojo
- - SonarQube → Defect Dojo (reimport direct from Defect Dojo)
+ - SonarQube → Defect Dojo (reimport direct from Defect Dojo) (Depracated by DDP Global Connector)
  - GitHub CodeQL SARIF reports → Defect Dojo (Implemented)
  - GitHub Secret Scanning JSON → Defect Dojo (Implemented)
  - GitHub Dependabot JSON → Defect Dojo (Implemented)
@@ -16,19 +16,8 @@ This PowerShell-based toolset automates the export and import of security findin
 
  Detailed help article in the Cyber Engineering Wiki [here](https://bamtech.visualstudio.com/BAM-IT/_wiki/wikis/BAM-IT.wiki/2729/DefectDojo-PowerShell-Tool-Overview). 
 
-v2.0.0 added complete CLI and webhook support to enable CI/CD runs and automation without user intervention. 
+v2.0.0 adds complete CLI and webhook support to enable CI/CD runs and automation without user intervention. 
 
-### Supported Integrations
-
-| Tool | Status | Features |
-|------|--------|----------|
-| **Tenable WAS** | Complete | Live scan list, batch processing, CSV export, automatic test creation |
-| **SonarQube** | Complete | DefectDojo API Scan Configuration integration, direct API import |
-| **GitHub CodeQL** | Complete | SARIF report download, per-repo test creation, latest analysis per category |
-| **GitHub Secret Scanning** | Complete | JSON alert export, open alert filtering, automatic feature detection |
-| **GitHub Dependabot** | Complete | Open alert export, configurable DefectDojo test target |
-| **BurpSuite** | Complete | Local XML report upload |
-| **DefectDojo** | Complete | Product/Engagement/Test management, API Scan Configurations, CLI launcher |
 
 ## Project Structure
 
@@ -146,7 +135,8 @@ Copy-Item .\config\config.psd1.example .\config\config.psd1
 
 ### Configuration File Structure
 
-The `config\config.psd1` file uses PowerShell data file format (hashtable) for easy editing:
+The `config\config.psd1` file uses PowerShell data file format (hashtable) for easy editing.
+It will be easiest to copy the config file and edit as needed as mentioned in the setup seciton.
 
 ```powershell
 @{
@@ -245,10 +235,17 @@ The `config\config.psd1` file uses PowerShell data file format (hashtable) for e
 
 #### DefectDojo Configuration
 - **ProductId**: Target DefectDojo product ID (auto-populated from GUI dropdown)
-- **EngagementId**: Target engagement ID (auto-populated from GUI dropdown)
-- **SonarQubeTestId**: Pre-selected test for SonarQube imports
-- **BurpSuiteTestId**: Pre-selected test for BurpSuite uploads
-- **GitHubDependabotTestId**: Pre-selected test for Dependabot alerts
+- **EngagementId**: Target engagement ID (auto-populated from GUI dropdown; used as default fallback)
+- **Per-Tool Engagement Overrides** (optional, CLI/config-only power user feature):
+  - **TenableWASEngagementId**: Override engagement for Tenable WAS scans
+  - **BurpSuiteEngagementId**: Override engagement for BurpSuite scans
+  - **CodeQLEngagementId**: Override engagement for GitHub CodeQL scans
+  - **SecretScanEngagementId**: Override engagement for GitHub Secret Scanning
+  - **DependabotEngagementId**: Override engagement for GitHub Dependabot alerts
+- **SonarQubeTestId**: Pre-selected test for SonarQube imports (required, no auto-create)
+- **TenableWASTestId**: Pre-selected test for Tenable WAS uploads (optional, auto-creates if not set)
+- **BurpSuiteTestId**: Pre-selected test for BurpSuite uploads (optional, auto-creates if not set)
+- **GitHubDependabotTestId**: Pre-selected test for Dependabot alerts (optional, auto-creates if not set)
 - **MinimumSeverity**: Severity threshold (`Info`, `Low`, `Medium`, `High`, `Critical`)
 - **APIScanConfigId**: DefectDojo API Scan Configuration ID for SonarQube
 - **CloseOldFindings**: When `$true`, old findings are closed on reimport; when `$false`, previous findings preserved
@@ -381,6 +378,71 @@ Program: C:\Program Files\PowerShell\7\pwsh.exe
 Arguments: -NoProfile -ExecutionPolicy Bypass -File "C:\dd-automation\Run-Automation.ps1"
 Working Directory: C:\dd-automation
 ```
+
+#### Per-Tool Engagement Routing
+
+**Power User Feature (CLI/Config-Only)**
+
+The per-tool engagement routing feature enables advanced users to route different security tool findings to separate DefectDojo engagements. This is particularly useful for organizations that want to separate SAST, DAST, SCA, and secret scanning findings into different engagements for specialized remediation workflows.
+
+**Use Cases**:
+- Separate DAST findings (TenableWAS + BurpSuite) from SAST findings (CodeQL) for different security teams
+- Route secret scanning alerts to a dedicated engagement for specialized review
+- Group dependency alerts (Dependabot) in a separate SCA engagement
+- Organize findings by scan type for different SLA requirements
+
+**How It Works**:
+- Per-tool engagement overrides are specified in the configuration file (`config\config.psd1`)
+- If a tool-specific engagement is configured, it takes precedence over the default engagement
+- Fallback pattern: Tool-specific engagement → Default engagement → Error
+- Tools with pre-configured TestIds (from GUI workflow) always use those tests regardless of engagement overrides
+- All engagement selection decisions are logged for debugging
+
+**Configuration Example**:
+```powershell
+DefectDojo = @{
+    ProductId    = 1
+    EngagementId = 10              # Default engagement for all tools (fallback)
+    
+    # Optional per-tool engagement overrides (CLI/config-only power user feature)
+    TenableWASEngagementId     = 11    # DAST - Web application scans
+    BurpSuiteEngagementId      = 11    # DAST - Burp scans (same engagement as Tenable)
+    CodeQLEngagementId         = 12    # SAST - Code analysis
+    SecretScanEngagementId     = 13    # Secrets detection
+    DependabotEngagementId     = 14    # SCA - Dependency scanning
+    
+    # Pre-configured test IDs (used by GUI, optional for CLI)
+    SonarQubeTestId            = 100   # Required (no auto-create for SonarQube)
+    TenableWASTestId           = 0     # If 0 or not set, auto-creates test per scan
+    BurpSuiteTestId            = 0     # If 0 or not set, auto-creates "BurpSuite Scan"
+    GitHubDependabotTestId     = 0     # If 0 or not set, auto-creates "GitHub Dependabot"
+}
+```
+
+**Supported Tool Overrides**:
+
+| Configuration Key | Tool | Auto-Test Creation | Default Test Name |
+|-------------------|------|-------------------|-------------------|
+| `TenableWASEngagementId` | Tenable WAS | Yes | `{ScanName} (Tenable WAS)` |
+| `BurpSuiteEngagementId` | BurpSuite | Yes | `BurpSuite Scan` |
+| `CodeQLEngagementId` | GitHub CodeQL | Yes | `{repo-name} (CodeQL)` |
+| `SecretScanEngagementId` | GitHub Secret Scanning | Yes | `{repo-name} (Secret Scanning)` |
+| `DependabotEngagementId` | GitHub Dependabot | Yes | `GitHub Dependabot` |
+| N/A | SonarQube | No | Uses API Scan Config (special case) |
+
+**Auto-Test Creation Enhancement**:
+- BurpSuite and Dependabot now auto-create tests if TestId not configured (matching behavior of TenableWAS/CodeQL/SecretScanning)
+- All tools check for existing test by name within the engagement and reuse if found
+- If a test with the same name doesn't exist, a new test is created automatically
+- Pre-configured TestIds from the GUI take precedence and skip auto-creation logic
+
+**Important Notes**:
+- This is a **CLI/config-only feature** - the GUI workflow is unchanged and uses the default engagement
+- Per-tool engagement routing is designed for power users managing automated workflows
+- GUI users should continue using the standard Product → Engagement → Test dropdown workflow
+- If using per-tool engagements, ensure all configured engagements exist in DefectDojo before running
+- SonarQube does not support engagement overrides (uses API Scan Configuration special case)
+- 100% backward compatible - existing configurations without per-tool overrides continue to work
 
 ### Manual Upload (DefectDojo CLI via GUI)
 

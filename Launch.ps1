@@ -792,6 +792,12 @@ function Invoke-Automation {
             }
         }
 
+        # Save DefectDojo selections to config BEFORE running workflows
+        # This ensures all modules that call Get-Config internally will use the updated values
+        if ($config.Tools.DefectDojo) {
+            Save-DefectDojoConfig -Config $config
+        }
+
         $selectedToolLabels = @()
         foreach ($tool in $script:tools) {
             $isEnabled = $false
@@ -847,11 +853,6 @@ function Invoke-Automation {
             Write-GuiMessage "Starting GitHub Dependabot workflow..."
             Invoke-Workflow-GitHubDependabot -Config $config
             Write-GuiMessage "GitHub Dependabot workflow finished."
-        }
-
-        # Save DefectDojo selections back to config
-        if ($config.Tools.DefectDojo) {
-            Save-DefectDojoConfig -Config $config
         }
 
         # Expose the updated config to the parent session for potential post-script actions
