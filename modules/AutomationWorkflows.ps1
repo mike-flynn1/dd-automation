@@ -245,18 +245,22 @@ function Invoke-Workflow-GitHubCodeQL {
         }
 
         GitHub-CodeQLDownload -Owners $orgs
-        Write-Log -Message "GitHub CodeQL download completed."
+            Write-Log -Message "GitHub CodeQL download completed."
 
-        if ($Config.Tools.DefectDojo) {
-            Write-Log -Message "Uploading GitHub CodeQL reports to DefectDojo..."
-            $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
-            $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
-            $result.Total = $sarifFiles.Count
+            if ($Config.Tools.DefectDojo) {
+                Write-Log -Message "Uploading GitHub CodeQL reports to DefectDojo..."
+                $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
+                $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+                $result.Total = $sarifFiles.Count
 
-            $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'CodeQL'
-            if (-not $engagementId) {
-                Write-Log -Message "No DefectDojo engagement ID configured; skipping GitHub uploads." -Level 'WARNING'
-                $result.Skipped = $result.Total
+                if ($sarifFiles.Count -eq 0) {
+                    Write-Log -Message "GitHub CodeQL completed: No SARIF files found." -Level 'INFO'
+                }
+
+                $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'CodeQL'
+                if (-not $engagementId) {
+                    Write-Log -Message "No DefectDojo engagement ID configured; skipping GitHub uploads." -Level 'WARNING'
+                    $result.Skipped = $result.Total
                 return $result
             }
             $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
@@ -341,6 +345,10 @@ function Invoke-Workflow-GitHubSecretScanning {
             $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubSecretScanning'
             $jsonFiles = Get-ChildItem -Path $downloadRoot -Filter '*-secrets.json' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
             $result.Total = $jsonFiles.Count
+
+            if ($jsonFiles.Count -eq 0) {
+                Write-Log -Message "GitHub Secret Scanning completed: No alert files found." -Level 'INFO'
+            }
             
             $engagementId = Get-EngagementIdForTool -Config $Config -Tool 'SecretScan'
             $existingTests = Get-DefectDojoTests -EngagementId $engagementId

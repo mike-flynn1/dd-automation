@@ -158,9 +158,18 @@ try {
         # Build detailed status
         $detailsArray = @()
         foreach ($result in $workflowResults) {
-            if ($result.Total -gt 0 -or $result.Skipped -gt 0) {
-                $status = if ($result.Failed -gt 0) { '⚠' } elseif ($result.Success -gt 0) { '✓' } else { '⊘' }
-                $detailsArray += "${status} **$($result.Tool)**: $($result.Success) succeeded, $($result.Failed) failed, $($result.Skipped) skipped (Total: $($result.Total))"
+            if (-not $result -or -not $result.Tool) { continue }
+
+            $success = if ([string]::IsNullOrEmpty([string]$result.Success)) { 0 } else { [int]$result.Success }
+            $failed  = if ([string]::IsNullOrEmpty([string]$result.Failed)) { 0 } else { [int]$result.Failed }
+            $skipped = if ([string]::IsNullOrEmpty([string]$result.Skipped)) { 0 } else { [int]$result.Skipped }
+            $total   = if ([string]::IsNullOrEmpty([string]$result.Total)) { 0 } else { [int]$result.Total }
+
+            if ($total -eq 0 -and $skipped -eq 0 -and $failed -eq 0) {
+                $detailsArray += "○ **$($result.Tool)**: No findings (0 files processed)"
+            } else {
+                $status = if ($failed -gt 0) { '⚠' } elseif ($success -gt 0) { '✓' } else { '⊘' }
+                $detailsArray += "${status} **$($result.Tool)**: ${success} succeeded, ${failed} failed, ${skipped} skipped (Total: ${total})"
             }
         }
         $details = $detailsArray -join "`n`n"
