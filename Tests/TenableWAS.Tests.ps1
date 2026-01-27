@@ -131,10 +131,159 @@ Describe 'Export-TenableWASScan (Unit)' {
     }
 }
 
-Describe 'Process-TenableWAS (Unit)' -Skip {
-    # These tests are for the GUI-specific Process-TenableWAS function in Launch.ps1
-    # which has been refactored into Invoke-Workflow-TenableWAS in AutomationWorkflows.ps1
-    # TODO: Update these tests to target the new workflow function or remove if no longer applicable
+Describe 'Invoke-Workflow-TenableWAS (Unit)' {
+    BeforeAll {
+        . (Join-Path $Global:TenableWasModuleDir 'AutomationWorkflows.ps1')
+    }
+
+    BeforeEach {
+        # Fresh config per test
+        $script:config = @{
+            Tools = @{ DefectDojo = $false }
+            DefectDojo = @{ CloseOldFindings = $false }
+            TenableWASSelectedScans = @()
+        }
+
+        # Quiet logging for unit tests
+        Mock Write-Log {}
+
+        # Default mocks (overridden per test when needed)
+        Mock Export-TenableWASScan {}
+        Mock Get-EngagementIdForTool {}
+        Mock Get-DefectDojoTestType {}
+        Mock Get-DefectDojoTests {}
+        Mock New-DefectDojoTest {}
+        Mock Upload-DefectDojoScan {}
+    }
+
+    It 'Skips when no scans are selected' {
+        $script:config.TenableWASSelectedScans = @()
+
+        $result = Invoke-Workflow-TenableWAS -Config $script:config
+
+        $result.Tool | Should -Be 'TenableWAS'
+        $result.Skipped | Should -Be 1
+        $result.Total | Should -Be 0
+        $result.Success | Should -Be 0
+        $result.Failed | Should -Be 0
+        Should -Not -Invoke Export-TenableWASScan
+    }
+
+    It 'Skips string scan entries and logs error' {
+        $script:config.TenableWASSelectedScans = @('just-a-name')
+
+        $result = Invoke-Workflow-TenableWAS -Config $script:config
+
+        $result.Skipped | Should -Be 1
+        $result.Total | Should -Be 1
+        $result.Success | Should -Be 0
+        $result.Failed | Should -Be 0
+        Should -Not -Invoke Export-TenableWASScan
+        Should -Invoke Write-Log -ParameterFilter { $Level -eq 'ERROR' -and $Message -match 'Scan config is string' }
+    }
+
+    It 'Exports scan when DefectDojo is disabled' {
+        $script:config.TenableWASSelectedScans = @([pscustomobject]@{ Name = 'Scan A'; Id = 'id-1' })
+        $script:config.Tools.DefectDojo = $false
+
+        Mock Export-TenableWASScan { return ' C:\tmp\scanA.csv ' }
+
+        $result = Invoke-Workflow-TenableWAS -Config $script:config
+
+        $result.Success | Should -Be 1
+        $result.Failed | Should -Be 0
+        $result.Skipped | Should -Be 0
+        $result.Total | Should -Be 1
+        Should -Invoke Export-TenableWASScan -Times 1 -ParameterFilter { $ScanName -eq 'Scan A' }
+        Should -Not -Invoke Upload-DefectDojoScan
+    }
+
+    It 'Reuses existing DefectDojo test when present' {
+        $script:config.Tools.DefectDojo = $true
+        $script:config.DefectDojo.CloseOldFindings = $true
+        $script:config.TenableWASSelectedScans = @([pscustomobject]@{ Name = 'Scan A'; Id = 'id-1' })
+
+        Mock Get-EngagementIdForTool { return 10 }
+        Mock Get-DefectDojoTestType { return 99 }
+        Mock Get-DefectDojoTests { return @([pscustomobject]@{ Title = 'Scan A (Tenable WAS)'; Id = 123 }) }
+        Mock Export-TenableWASScan { return ' C:\tmp\scanA.csv ' }
+
+        $result = Invoke-Workflow-TenableWAS -Config $script:config
+
+        $result.Success | Should -Be 1
+        $result.Failed | Should -Be 0
+        $result.Skipped | Should -Be 0
+        $result.Total | Should -Be 1
+
+        Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter {
+            $FilePath -eq 'C:\tmp\scanA.csv' -and
+            $TestId -eq 123 -and
+            $ScanType -eq 'Tenable Scan' -and
+            $CloseOldFindings -eq $true
+        }
+        Should -Not -Invoke New-DefectDojoTest
+    }
+
+    It 'Creates new DefectDojo test when none exists' {
+        $script:config.Tools.DefectDojo = $true
+        $script:config.DefectDojo.CloseOldFindings = $false
+        $script:config.TenableWASSelectedScans = @([pscustomobject]@{ Name = 'Scan B'; Id = 'id-2' })
+
+        Mock Get-EngagementIdForTool { return 20 }
+        Mock Get-DefectDojoTestType { return 88 }
+        Mock Get-DefectDojoTests { return @() }
+        Mock New-DefectDojoTest { return [pscustomobject]@{ Id = 77; Title = 'Scan B (Tenable WAS)' } }
+        Mock Export-TenableWASScan { return 'C:\tmp\scanB.csv' }
+
+        $result = Invoke-Workflow-TenableWAS -Config $script:config
+
+        $result.Success | Should -Be 1
+        $result.Failed | Should -Be 0
+        $result.Skipped | Should -Be 0
+        $result.Total | Should -Be 1
+
+        Should -Invoke New-DefectDojoTest -Times 1 -ParameterFilter {
+            $EngagementId -eq 20 -and
+            $TestName -eq 'Scan B (Tenable WAS)' -and
+            $TestType -eq 88
+        }
+        Should -Invoke Upload-DefectDojoScan -Times 1 -ParameterFilter {
+            $FilePath -eq 'C:\tmp\scanB.csv' -and
+            $TestId -eq 77 -and
+            $ScanType -eq 'Tenable Scan'
+        }
+    }
+
+    It 'Fails early when engagement ID is missing for DefectDojo uploads' {
+        $script:config.Tools.DefectDojo = $true
+        $script:config.TenableWASSelectedScans = @([pscustomobject]@{ Name = 'Scan C'; Id = 'id-3' })
+
+        Mock Get-EngagementIdForTool { return $null }
+
+        $result = Invoke-Workflow-TenableWAS -Config $script:config
+
+        $result.Failed | Should -Be 1
+        $result.Success | Should -Be 0
+        $result.Skipped | Should -Be 0
+        $result.Total | Should -Be 0
+        Should -Not -Invoke Export-TenableWASScan
+        Should -Invoke Write-Log -ParameterFilter { $Level -eq 'ERROR' -and $Message -match 'engagement ID' }
+    }
+
+    It 'Counts failure when export throws' {
+        $script:config.Tools.DefectDojo = $false
+        $script:config.TenableWASSelectedScans = @([pscustomobject]@{ Name = 'Scan D'; Id = 'id-4' })
+
+        Mock Export-TenableWASScan { throw 'Export failed' }
+
+        $result = Invoke-Workflow-TenableWAS -Config $script:config
+
+        $result.Failed | Should -Be 1
+        $result.Success | Should -Be 0
+        $result.Skipped | Should -Be 0
+        $result.Total | Should -Be 1
+        Should -Not -Invoke Upload-DefectDojoScan
+    }
 }
 
 Describe 'Get-TenableWASScanConfigs (Unit)' {
