@@ -122,4 +122,74 @@ Describe "AutomationWorkflows" {
             $detailsArray[0] | Should -Be "⚠ **GitHub CodeQL**: 3 succeeded, 1 failed, 0 skipped (Total: 4)"
         }
     }
+    
+    Context "Get-UploadTags" {
+        It "Should return empty tags when DefectDojo config missing" {
+            $config = @{}
+            $result = Get-UploadTags -Config $config
+            
+            $result.Tags | Should -HaveCount 0
+            $result.ApplyTagsToFindings | Should -BeFalse
+            $result.ApplyTagsToEndpoints | Should -BeFalse
+        }
+        
+        It "Should return tags from config" {
+            $config = @{
+                DefectDojo = @{
+                    Tags = @('tag1', 'tag2', 'tag3')
+                    ApplyTagsToFindings = $true
+                    ApplyTagsToEndpoints = $false
+                }
+            }
+            
+            $result = Get-UploadTags -Config $config
+            
+            $result.Tags | Should -HaveCount 3
+            $result.Tags | Should -Contain 'tag1'
+            $result.Tags | Should -Contain 'tag2'
+            $result.Tags | Should -Contain 'tag3'
+            $result.ApplyTagsToFindings | Should -BeTrue
+            $result.ApplyTagsToEndpoints | Should -BeFalse
+        }
+        
+        It "Should filter out empty tags" {
+            $config = @{
+                DefectDojo = @{
+                    Tags = @('valid-tag', '', '  ', 'another-tag', $null)
+                }
+            }
+            
+            $result = Get-UploadTags -Config $config
+            
+            $result.Tags | Should -HaveCount 2
+            $result.Tags | Should -Contain 'valid-tag'
+            $result.Tags | Should -Contain 'another-tag'
+        }
+        
+        It "Should handle missing Tags key" {
+            $config = @{
+                DefectDojo = @{
+                    ApplyTagsToFindings = $true
+                }
+            }
+            
+            $result = Get-UploadTags -Config $config
+            
+            $result.Tags | Should -HaveCount 0
+            $result.ApplyTagsToFindings | Should -BeTrue
+        }
+        
+        It "Should default flags to false when not specified" {
+            $config = @{
+                DefectDojo = @{
+                    Tags = @('test-tag')
+                }
+            }
+            
+            $result = Get-UploadTags -Config $config
+            
+            $result.ApplyTagsToFindings | Should -BeFalse
+            $result.ApplyTagsToEndpoints | Should -BeFalse
+        }
+    }
 }
