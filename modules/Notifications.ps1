@@ -136,7 +136,19 @@ function Send-WebhookNotification {
 
     $payload = $payloadObject | ConvertTo-Json -Depth 10
 
-    Write-Verbose "Sending $WebhookType webhook notification to $WebhookUrl"
+    # Redact sensitive parts of the webhook URL for logging purposes
+    $redactedUrl = '<redacted>'
+    try {
+        $parsedUri = [Uri]$WebhookUrl
+        if ($parsedUri -and $parsedUri.IsAbsoluteUri) {
+            # Log only scheme, host, and path; omit query/fragment that may contain secrets
+            $redactedUrl = '{0}://{1}{2}' -f $parsedUri.Scheme, $parsedUri.Host, $parsedUri.AbsolutePath
+        }
+    } catch {
+        # If parsing fails, keep the placeholder rather than logging the raw URL
+    }
+
+    Write-Verbose "Sending $WebhookType webhook notification to $redactedUrl"
     try {
         $response = Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $payload -ContentType 'application/json' -ErrorAction Stop
         Write-Verbose "Notification sent successfully."
