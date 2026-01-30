@@ -135,7 +135,7 @@ function Initialize-GuiElements {
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(640, 900)
+    $form.Size = New-Object System.Drawing.Size(640, 975)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
@@ -243,11 +243,27 @@ function Initialize-GuiElements {
     $form.Controls.AddRange(@($lblDDCloseFindings, $script:chkDDCloseFindings))
     $script:toolTip.SetToolTip($script:chkDDCloseFindings, 'When checked, old findings will be closed on reimport. When unchecked, previous findings are preserved.')
 
+    # Tags TextBox and Label
+    $lblTags = New-Object System.Windows.Forms.Label -Property @{ Text = 'Tags:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 570) }
+    $script:txtTags = New-Object System.Windows.Forms.TextBox -Property @{ Location = New-Object System.Drawing.Point(150, 568); Size = New-Object System.Drawing.Size(300, 20); Enabled = $false }
+    $form.Controls.AddRange(@($lblTags, $script:txtTags))
+    $script:toolTip.SetToolTip($script:txtTags, 'Enter tags to apply to all scan uploads (e.g., automated-scan, dd-automation). Separate multiple tags with commas.')
+
+    # Apply Tags to Findings Checkbox
+    $script:chkApplyTagsToFindings = New-Object System.Windows.Forms.CheckBox -Property @{ Text = 'Apply tags to findings'; AutoSize = $true; Location = New-Object System.Drawing.Point(150, 595); Checked = $false; Enabled = $false }
+    $form.Controls.Add($script:chkApplyTagsToFindings)
+    $script:toolTip.SetToolTip($script:chkApplyTagsToFindings, 'When checked, tags will be applied to individual findings as well as the test.')
+
+    # Apply Tags to Endpoints Checkbox
+    $script:chkApplyTagsToEndpoints = New-Object System.Windows.Forms.CheckBox -Property @{ Text = 'Apply tags to endpoints'; AutoSize = $true; Location = New-Object System.Drawing.Point(150, 620); Checked = $false; Enabled = $false }
+    $form.Controls.Add($script:chkApplyTagsToEndpoints)
+    $script:toolTip.SetToolTip($script:chkApplyTagsToEndpoints, 'When checked, tags will be applied to endpoints as well as the test.')
+
     # Manual Upload (DefectDojo CLI) GroupBox
     $grpManualTool = New-Object System.Windows.Forms.GroupBox
     $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
     $grpManualTool.Size = New-Object System.Drawing.Size(580, 80)
-    $grpManualTool.Location = New-Object System.Drawing.Point(10, 570)
+    $grpManualTool.Location = New-Object System.Drawing.Point(10, 650)
     $form.Controls.Add($grpManualTool)
 
     # Launch DefectDojo CLI Button
@@ -267,18 +283,18 @@ function Initialize-GuiElements {
     # Add tooltip for Launch DefectDojo CLI button
     $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
 
-    # Status ListBox (moved down to accommodate new group)
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 660) }
+    # Status ListBox (moved down to accommodate new controls)
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 740) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
-    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 795); Size = New-Object System.Drawing.Size(80, 30) }
-    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 795); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 900); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 900); Size = New-Object System.Drawing.Size(80, 30) }
     
     # Add completion message label
     $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
         Text = ""; 
-        Location = New-Object System.Drawing.Point(10, 830); 
+        Location = New-Object System.Drawing.Point(10, 910); 
         Size = New-Object System.Drawing.Size(400, 25);
         Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
         ForeColor = [System.Drawing.Color]::Green;
@@ -327,6 +343,9 @@ function Register-EventHandlers {
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
         $script:chkDDCloseFindings.Enabled = $this.Checked
+        $script:txtTags.Enabled = $this.Checked
+        $script:chkApplyTagsToFindings.Enabled = $this.Checked
+        $script:chkApplyTagsToEndpoints.Enabled = $this.Checked
     })
 
     # Browse for BurpSuite folder
@@ -612,6 +631,9 @@ function Prepopulate-FormFromConfig {
     if ($script:chkBoxes['DefectDojo'].Checked) {
         $script:cmbDDSeverity.Enabled = $true
         $script:chkDDCloseFindings.Enabled = $true
+        $script:txtTags.Enabled = $true
+        $script:chkApplyTagsToFindings.Enabled = $true
+        $script:chkApplyTagsToEndpoints.Enabled = $true
     }
 
     if ($script:chkBoxes['TenableWAS'].Checked) {
@@ -684,6 +706,16 @@ function Prepopulate-FormFromConfig {
         }
         if ($Config.DefectDojo.CloseOldFindings) {
             $script:chkDDCloseFindings.Checked = $Config.DefectDojo.CloseOldFindings
+        }
+        if ($Config.DefectDojo.Tags) {
+            $tagsText = ($Config.DefectDojo.Tags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ', '
+            $script:txtTags.Text = $tagsText
+        }
+        if ($Config.DefectDojo.ApplyTagsToFindings) {
+            $script:chkApplyTagsToFindings.Checked = $Config.DefectDojo.ApplyTagsToFindings
+        }
+        if ($Config.DefectDojo.ApplyTagsToEndpoints) {
+            $script:chkApplyTagsToEndpoints.Checked = $Config.DefectDojo.ApplyTagsToEndpoints
         }
     }
     Write-GuiMessage "Pre-population complete."
@@ -894,13 +926,26 @@ function Save-DefectDojoConfig {
 
     $dependabotEnabled = Get-GitHubFeatureState -Config $Config -ToolKey 'GitHubDependabot'
 
+    # Parse and save tags
+    $tagsText = $script:txtTags.Text.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($tagsText)) {
+        # Split by comma, trim whitespace, filter empties
+        $tagArray = @($tagsText -split ',' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if (-not $Config.DefectDojo) { $Config.DefectDojo = @{} }
+        $Config.DefectDojo.Tags = $tagArray
+    } else {
+        if (-not $Config.DefectDojo) { $Config.DefectDojo = @{} }
+        $Config.DefectDojo.Tags = @()
+    }
+    # Save tag flags
+    if (-not $Config.DefectDojo) { $Config.DefectDojo = @{} }
+    $Config.DefectDojo.ApplyTagsToFindings = $script:chkApplyTagsToFindings.Checked
+    $Config.DefectDojo.ApplyTagsToEndpoints = $script:chkApplyTagsToEndpoints.Checked
+
     # Validate that all necessary selections have been made
     $incomplete = $false
     if (-not $selections.Product -or -not $selections.Engagement) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
-    if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
-    if ($dependabotEnabled -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
-
     if ($incomplete) {
         Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
         return
@@ -916,6 +961,9 @@ function Save-DefectDojoConfig {
         GitHubDependabotTestId = $selections.GitHubDependabotTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
         CloseOldFindings  = $script:chkDDCloseFindings.Checked
+        ApplyTagsToFindings = $script:chkApplyTagsToFindings.Checked
+        ApplyTagsToEndpoints = $script:chkApplyTagsToEndpoints.Checked
+        Tags = $Config.DefectDojo.Tags  # Preserve tags that were saved before validation
     }
 
     Write-GuiMessage "Saving DefectDojo selections to config file..."

@@ -12,6 +12,38 @@
 . (Join-Path $PSScriptRoot 'GitHub.ps1')
 . (Join-Path $PSScriptRoot 'Uploader.ps1')
 
+function Get-UploadTags {
+    <#
+    .SYNOPSIS
+        Retrieves tags from config for DefectDojo uploads.
+    .PARAMETER Config
+        Configuration hashtable.
+    .OUTPUTS
+        Hashtable with Tags, ApplyTagsToFindings, ApplyTagsToEndpoints.
+    #>
+    param([hashtable]$Config)
+    
+    $result = @{
+        Tags = @()
+        ApplyTagsToFindings = $false
+        ApplyTagsToEndpoints = $false
+    }
+    
+    if ($Config.DefectDojo) {
+        if ($Config.DefectDojo.Tags) {
+            $result.Tags = @($Config.DefectDojo.Tags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+        if ($Config.DefectDojo.ApplyTagsToFindings) {
+            $result.ApplyTagsToFindings = $Config.DefectDojo.ApplyTagsToFindings
+        }
+        if ($Config.DefectDojo.ApplyTagsToEndpoints) {
+            $result.ApplyTagsToEndpoints = $Config.DefectDojo.ApplyTagsToEndpoints
+        }
+    }
+    
+    return $result
+}
+
 function Invoke-Workflow-TenableWAS {
     param([hashtable]$Config)
 
@@ -93,7 +125,14 @@ function Invoke-Workflow-TenableWAS {
 
                 $filePathString = ([string]$exportedFile).Trim()
                 $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $closeOldFindings
+                $tagParams = Get-UploadTags -Config $Config
+                Upload-DefectDojoScan -FilePath $filePathString `
+                                       -TestId $testId `
+                                       -ScanType 'Tenable Scan' `
+                                       -CloseOldFindings $closeOldFindings `
+                                       -Tags $tagParams.Tags `
+                                       -ApplyTagsToFindings $tagParams.ApplyTagsToFindings `
+                                       -ApplyTagsToEndpoints $tagParams.ApplyTagsToEndpoints
                 Write-Log -Message "TenableWAS scan report uploaded successfully to DefectDojo test: $serviceName"
             }
             $result.Success++
@@ -208,7 +247,14 @@ function Invoke-Workflow-BurpSuite {
                 Write-Log -Message "Uploading $fileName to DefectDojo test ID: $burpTestId"
                 $filePathString = ([string]$xmlFile).Trim()
                 $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $burpTestId -ScanType 'Burp Scan' -CloseOldFindings $closeOldFindings
+                $tagParams = Get-UploadTags -Config $Config
+                Upload-DefectDojoScan -FilePath $filePathString `
+                                       -TestId $burpTestId `
+                                       -ScanType 'Burp Scan' `
+                                       -CloseOldFindings $closeOldFindings `
+                                       -Tags $tagParams.Tags `
+                                       -ApplyTagsToFindings $tagParams.ApplyTagsToFindings `
+                                       -ApplyTagsToEndpoints $tagParams.ApplyTagsToEndpoints
                 Write-Log -Message "Successfully uploaded $fileName"
                 $result.Success = 1
             } catch {
@@ -298,7 +344,14 @@ function Invoke-Workflow-GitHubCodeQL {
                         $testId = $existingTest.Id
                     }
 
-                    Upload-DefectDojoScan -FilePath $file -TestId $testId -ScanType 'SARIF' -CloseOldFindings $closeOldFindings
+                    $tagParams = Get-UploadTags -Config $Config
+                    Upload-DefectDojoScan -FilePath $file `
+                                           -TestId $testId `
+                                           -ScanType 'SARIF' `
+                                           -CloseOldFindings $closeOldFindings `
+                                           -Tags $tagParams.Tags `
+                                           -ApplyTagsToFindings $tagParams.ApplyTagsToFindings `
+                                           -ApplyTagsToEndpoints $tagParams.ApplyTagsToEndpoints
                     $result.Success++
                 } catch {
                     $result.Failed++
@@ -391,7 +444,14 @@ function Invoke-Workflow-GitHubSecretScanning {
                         $testId = $existingTest.Id
                     }
 
-                    Upload-DefectDojoScan -FilePath $file -TestId $testId -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $closeOldFindings
+                    $tagParams = Get-UploadTags -Config $Config
+                    Upload-DefectDojoScan -FilePath $file `
+                                           -TestId $testId `
+                                           -ScanType 'Universal Parser - GitHub Secret Scanning' `
+                                           -CloseOldFindings $closeOldFindings `
+                                           -Tags $tagParams.Tags `
+                                           -ApplyTagsToFindings $tagParams.ApplyTagsToFindings `
+                                           -ApplyTagsToEndpoints $tagParams.ApplyTagsToEndpoints
                     $result.Success++
                 } catch {
                     $result.Failed++
@@ -463,7 +523,7 @@ function Invoke-Workflow-GitHubDependabot {
                 } else {
                     Write-Log -Message "Creating new DefectDojo test: $testName"
                     try {
-                        $dependabotTestTypeId = Get-DefectDojoTestType -TestTypeName 'GitHub Vulnerability Scan'
+                        $dependabotTestTypeId = Get-DefectDojoTestType -TestTypeName 'Universal Parser - GitHub Dependabot Aert5s'
                         $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $testName -TestType $dependabotTestTypeId
                         Write-Log -Message "Test created successfully: $testName (ID: $($newTest.Id))"
                         $dependabotTestId = $newTest.Id
@@ -476,10 +536,17 @@ function Invoke-Workflow-GitHubDependabot {
             }
 
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
+            $tagParams = Get-UploadTags -Config $Config
 
             foreach ($file in $dependabotFiles) {
                 try {
-                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTestId -ScanType 'Universal Parser - GitHub Dependabot Aert5s' -CloseOldFindings $closeOldFindings
+                    Upload-DefectDojoScan -FilePath $file `
+                                           -TestId $dependabotTestId `
+                                           -ScanType 'Universal Parser - GitHub Dependabot Aert5s' `
+                                           -CloseOldFindings $closeOldFindings `
+                                           -Tags $tagParams.Tags `
+                                           -ApplyTagsToFindings $tagParams.ApplyTagsToFindings `
+                                           -ApplyTagsToEndpoints $tagParams.ApplyTagsToEndpoints
                     Write-Log -Message "Uploaded Dependabot JSON: $([System.IO.Path]::GetFileName($file))"
                     $result.Success++
                 } catch {

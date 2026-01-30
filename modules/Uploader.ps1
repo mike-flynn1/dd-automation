@@ -22,7 +22,16 @@ function Upload-DefectDojoScan {
         [string]$ScanType = 'Tenable WAS Scan',
 
         [Parameter(Mandatory=$false)]
-        [bool]$CloseOldFindings = $false
+        [bool]$CloseOldFindings = $false,
+        
+        [Parameter(Mandatory=$false)]
+        [string[]]$Tags = @(),
+        
+        [Parameter(Mandatory=$false)]
+        [bool]$ApplyTagsToFindings = $false,
+        
+        [Parameter(Mandatory=$false)]
+        [bool]$ApplyTagsToEndpoints = $false
     )
 
     $config  = Get-Config
@@ -42,6 +51,18 @@ function Upload-DefectDojoScan {
         file                 = Get-Item -Path $FilePath
         minimum_severity     = $config.DefectDojo.MinimumSeverity
         close_old_findings   = $CloseOldFindings
+    }
+    
+    # Add tags if provided
+    if ($Tags -and $Tags.Count -gt 0) {
+        # Filter out empty tags
+        $validTags = @($Tags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($validTags.Count -gt 0) {
+            $form['tags'] = $validTags
+            $form['apply_tags_to_findings'] = $ApplyTagsToFindings
+            $form['apply_tags_to_endpoints'] = $ApplyTagsToEndpoints
+            Write-Log -Message "Uploading with tags: $($validTags -join ', ')" -Level 'INFO'
+        }
     }
 
     $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Form $form -UseBasicParsing

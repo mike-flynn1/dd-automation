@@ -153,6 +153,31 @@ function Validate-Config {
         }
     }
 
+    # Validate DefectDojo tags if present
+    if ($Config.DefectDojo -isnot [hashtable]) {
+        $errors += 'Configuration.DefectDojo must be a hashtable of DefectDojo settings'
+    }
+        else {
+        if ($Config.DefectDojo -and $Config.DefectDojo.ContainsKey('Tags')) {
+            $tags = $Config.DefectDojo.Tags
+            if ($null -ne $tags) {
+                # Tags must be an array (or enumerable), not a single string
+                if ($tags -isnot [System.Collections.IEnumerable] -or $tags -is [string]) {
+                    $errors += 'Configuration.DefectDojo.Tags must be an array of strings'
+                }
+                elseif ($tags -is [System.Collections.IEnumerable]) {
+                    # Validate each tag is non-empty string
+                    foreach ($tag in $tags) {
+                        if ($tag -isnot [string] -or [string]::IsNullOrWhiteSpace($tag)) {
+                            $errors += 'Configuration.DefectDojo.Tags contains empty or non-string tag values'
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if ($errors.Count -gt 0) {
         Throw ($errors -join '; ')
     }
@@ -241,7 +266,18 @@ function Save-Config {
         $sb.AppendLine('    DefectDojo = @{') | Out-Null
         foreach ($key in $Config.DefectDojo.Keys) {
             $val = $Config.DefectDojo[$key]
-            if ($null -eq $val -or $val -is [string]) {
+            # Handle Tags array specifically
+            if ($key -eq 'Tags' -and $val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($tag in $val) {
+                    if (-not [string]::IsNullOrWhiteSpace($tag)) {
+                        $escapedTag = $tag -replace "'","''"
+                        $sb.AppendLine("            '$escapedTag'") | Out-Null
+                    }
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            elseif ($null -eq $val -or $val -is [string]) {
                 $inner = if ($null -eq $val) { '' } else { $val }
                 $sb.AppendLine("        $key = '$inner'") | Out-Null
             } elseif ($val -is [bool]) {

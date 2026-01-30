@@ -182,6 +182,9 @@ It will be easiest to copy the config file and edit as needed as mentioned in th
         MinimumSeverity        = 'Low'
         APIScanConfigId        = 1
         CloseOldFindings       = $false
+        Tags                   = @('production', 'web-app')  # Applied to all uploads
+        ApplyTagsToFindings    = $true                       # Tags appear in findings
+        ApplyTagsToEndpoints   = $false                      # Tags appear on endpoints
     }
 
     # GitHub configuration
@@ -249,6 +252,9 @@ It will be easiest to copy the config file and edit as needed as mentioned in th
 - **MinimumSeverity**: Severity threshold (`Info`, `Low`, `Medium`, `High`, `Critical`)
 - **APIScanConfigId**: DefectDojo API Scan Configuration ID for SonarQube
 - **CloseOldFindings**: When `$true`, old findings are closed on reimport; when `$false`, previous findings preserved
+- **Tags**: Array of tags to apply to all test uploads (e.g., `@('production', 'critical')`)
+- **ApplyTagsToFindings**: When `$true`, tags propagate to individual findings; when `$false`, tags apply only to test
+- **ApplyTagsToEndpoints**: When `$true`, tags propagate to endpoints; when `$false`, tags apply only to test
 
 #### GitHub Repository Filtering
 
@@ -311,10 +317,13 @@ The GUI provides an intuitive interface for configuring and running automation w
 5. **DefectDojo Configuration**:
    - Product dropdown (loads available products from API)
    - Engagement dropdown (loads engagements for selected product)
-   - Test dropdowns for each tool (loads tests for selected engagement)
-   - API Scan Configuration dropdown (for SonarQube)
-   - Minimum severity selector
-   - Close Old Findings checkbox
+    - Test dropdowns for each tool (loads tests for selected engagement)
+    - API Scan Configuration dropdown (for SonarQube)
+    - Minimum severity selector
+    - Close Old Findings checkbox
+    - Tags (comma-separated) textbox - Enter tags to apply to all uploads
+    - Apply tags to findings checkbox - Propagate tags to individual findings
+    - Apply tags to endpoints checkbox - Propagate tags to endpoints
 6. **Status Log**: Real-time progress display with timestamps
 7. **DefectDojo CLI Launcher**: Opens DefectDojo CLI tool in interactive mode for manual uploads
 8. **Action Buttons**: "GO" to start automation, "Close" to exit
