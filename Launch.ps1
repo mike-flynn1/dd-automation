@@ -244,7 +244,7 @@ function Initialize-GuiElements {
     $script:toolTip.SetToolTip($script:chkDDCloseFindings, 'When checked, old findings will be closed on reimport. When unchecked, previous findings are preserved.')
 
     # Tags TextBox and Label
-    $lblTags = New-Object System.Windows.Forms.Label -Property @{ Text = 'Tags (comma-separated):'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 570) }
+    $lblTags = New-Object System.Windows.Forms.Label -Property @{ Text = 'Tags:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 570) }
     $script:txtTags = New-Object System.Windows.Forms.TextBox -Property @{ Location = New-Object System.Drawing.Point(150, 568); Size = New-Object System.Drawing.Size(300, 20); Enabled = $false }
     $form.Controls.AddRange(@($lblTags, $script:txtTags))
     $script:toolTip.SetToolTip($script:txtTags, 'Enter tags to apply to all scan uploads (e.g., automated-scan, dd-automation). Separate multiple tags with commas.')
@@ -926,7 +926,7 @@ function Save-DefectDojoConfig {
 
     $dependabotEnabled = Get-GitHubFeatureState -Config $Config -ToolKey 'GitHubDependabot'
 
-    # Parse and save tags BEFORE validation (tags should work even if selections incomplete)
+    # Parse and save tags
     $tagsText = $script:txtTags.Text.Trim()
     if (-not [string]::IsNullOrWhiteSpace($tagsText)) {
         # Split by comma, trim whitespace, filter empties
@@ -946,9 +946,6 @@ function Save-DefectDojoConfig {
     $incomplete = $false
     if (-not $selections.Product -or -not $selections.Engagement) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
-    if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
-    if ($dependabotEnabled -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
-
     if ($incomplete) {
         Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
         return

@@ -523,7 +523,7 @@ function Invoke-Workflow-GitHubDependabot {
                 } else {
                     Write-Log -Message "Creating new DefectDojo test: $testName"
                     try {
-                        $dependabotTestTypeId = Get-DefectDojoTestType -TestTypeName 'GitHub Vulnerability Scan'
+                        $dependabotTestTypeId = Get-DefectDojoTestType -TestTypeName 'Universal Parser - GitHub Dependabot Aert5s'
                         $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $testName -TestType $dependabotTestTypeId
                         Write-Log -Message "Test created successfully: $testName (ID: $($newTest.Id))"
                         $dependabotTestId = $newTest.Id

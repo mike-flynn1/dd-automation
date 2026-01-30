@@ -153,20 +153,25 @@ function Validate-Config {
         }
     }
 
-    # Validate DefectDojo.Tags if present
-    if ($Config.DefectDojo -and $Config.DefectDojo.ContainsKey('Tags')) {
-        $tags = $Config.DefectDojo.Tags
-        if ($null -ne $tags) {
-            # Tags must be an array (or enumerable), not a single string
-            if ($tags -isnot [System.Collections.IEnumerable] -or $tags -is [string]) {
-                $errors += 'Configuration.DefectDojo.Tags must be an array of strings'
-            }
-            elseif ($tags -is [System.Collections.IEnumerable]) {
-                # Validate each tag is non-empty string
-                foreach ($tag in $tags) {
-                    if ($tag -isnot [string] -or [string]::IsNullOrWhiteSpace($tag)) {
-                        $errors += 'Configuration.DefectDojo.Tags contains empty or non-string tag values'
-                        break
+    # Validate DefectDojo tags if present
+    if ($Config.DefectDojo -isnot [hashtable]) {
+        $errors += 'Configuration.DefectDojo must be a hashtable of DefectDojo settings'
+    }
+        else {
+        if ($Config.DefectDojo -and $Config.DefectDojo.ContainsKey('Tags')) {
+            $tags = $Config.DefectDojo.Tags
+            if ($null -ne $tags) {
+                # Tags must be an array (or enumerable), not a single string
+                if ($tags -isnot [System.Collections.IEnumerable] -or $tags -is [string]) {
+                    $errors += 'Configuration.DefectDojo.Tags must be an array of strings'
+                }
+                elseif ($tags -is [System.Collections.IEnumerable]) {
+                    # Validate each tag is non-empty string
+                    foreach ($tag in $tags) {
+                        if ($tag -isnot [string] -or [string]::IsNullOrWhiteSpace($tag)) {
+                            $errors += 'Configuration.DefectDojo.Tags contains empty or non-string tag values'
+                            break
+                        }
                     }
                 }
             }
