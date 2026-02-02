@@ -70,14 +70,6 @@ function Invoke-Workflow-TenableWAS {
             return $result
         }
 
-        try {
-            $tenableTestTypeId = Get-DefectDojoTestType -TestTypeName 'Tenable Scan'
-        } catch {
-            Write-Log -Message "Failed to lookup 'Tenable Scan' test type: $_" -Level 'ERROR'
-            $result.Failed = 1
-            return $result
-        }
-
         $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
     }
 
@@ -102,25 +94,20 @@ function Invoke-Workflow-TenableWAS {
                 Write-Log -Message "Processing TenableWAS scan for DefectDojo upload..."
 
                 $serviceName = "$($scan.Name) (Tenable WAS)"
-                $existingTest = $existingTests | Where-Object {
-                    $_.Title -in @($serviceName, $scan.Name, "$($scan.Name) (Tenable)")
-                } | Select-Object -First 1
-
-                if (-not $existingTest) {
-                    Write-Log -Message "Creating new DefectDojo test: $serviceName"
-                    try {
-                        $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $serviceName -TestType $tenableTestTypeId
-                        Write-Log -Message "Test created successfully: $serviceName (ID: $($newTest.Id))"
-                        $existingTests += $newTest
-                        $testId = $newTest.Id
-                    } catch {
-                        Write-Log -Message "Failed to create test ${serviceName}: $_" -Level 'ERROR'
-                        $result.Failed++
-                        continue
-                    }
-                } else {
-                    Write-Log -Message "Using existing DefectDojo test: $($existingTest.Title) (ID: $($existingTest.Id))"
-                    $testId = $existingTest.Id
+                $alternateNames = @($scan.Name, "$($scan.Name) (Tenable)")
+                
+                try {
+                    $resolveResult = Resolve-DefectDojoTest -EngagementId $engagementId `
+                                                           -TestName $serviceName `
+                                                           -TestTypeName 'Tenable Scan' `
+                                                           -ExistingTests $existingTests `
+                                                           -AlternateNames $alternateNames
+                    $testId = $resolveResult.TestId
+                    $existingTests = $resolveResult.UpdatedTests
+                } catch {
+                    Write-Log -Message "Failed to resolve/create test ${serviceName}: $_" -Level 'ERROR'
+                    $result.Failed++
+                    continue
                 }
 
                 $filePathString = ([string]$exportedFile).Trim()
@@ -213,26 +200,20 @@ function Invoke-Workflow-BurpSuite {
                     return $result
                 }
                 
-                # Look for existing test or create new one
+                # Look for existing test or create new one using helper
                 $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
                 $testName = "BurpSuite Scan"
-                $existingTest = $existingTests | Where-Object { $_.Title -eq $testName } | Select-Object -First 1
                 
-                if ($existingTest) {
-                    Write-Log -Message "Using existing DefectDojo test: $testName (ID: $($existingTest.Id))"
-                    $burpTestId = $existingTest.Id
-                } else {
-                    Write-Log -Message "Creating new DefectDojo test: $testName"
-                    try {
-                        $burpTestTypeId = Get-DefectDojoTestType -TestTypeName 'Burp Scan'
-                        $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $testName -TestType $burpTestTypeId
-                        Write-Log -Message "Test created successfully: $testName (ID: $($newTest.Id))"
-                        $burpTestId = $newTest.Id
-                    } catch {
-                        Write-Log -Message "Failed to create BurpSuite test: $_" -Level 'ERROR'
-                        $result.Failed = 1
-                        return $result
-                    }
+                try {
+                    $resolveResult = Resolve-DefectDojoTest -EngagementId $engagementId `
+                                                           -TestName $testName `
+                                                           -TestTypeName 'Burp Scan' `
+                                                           -ExistingTests $existingTests
+                    $burpTestId = $resolveResult.TestId
+                } catch {
+                    Write-Log -Message "Failed to resolve/create BurpSuite test: $_" -Level 'ERROR'
+                    $result.Failed = 1
+                    return $result
                 }
             }
 
@@ -311,15 +292,6 @@ function Invoke-Workflow-GitHubCodeQL {
             }
             $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
             
-            # Get test type ID for SARIF
-            try {
-                $sarifTestTypeId = Get-DefectDojoTestType -TestTypeName 'SARIF'
-            } catch {
-                Write-Log -Message "Failed to lookup 'SARIF' test type: $_" -Level 'ERROR'
-                $result.Failed = $result.Total
-                return $result
-            }
-            
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
             
             foreach ($file in $sarifFiles) {
@@ -333,24 +305,20 @@ function Invoke-Workflow-GitHubCodeQL {
 
                     $serviceNameCore = $repoNameOnly
                     $serviceName = "$serviceNameCore (CodeQL)"
+                    $alternateNames = @($serviceNameCore, $repoNameOnly)
 
-                    $existingTest = $existingTests | Where-Object { $_.title -in @($serviceName, $serviceNameCore, $repoNameOnly) } | Select-Object -First 1
-
-                    if (-not $existingTest) {
-                        Write-Log -Message "Creating new test: $serviceName"
-                        try {
-                            $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $serviceName -TestType $sarifTestTypeId
-                            Write-Log -Message "Test created successfully: $serviceName (ID: $($newTest.Id))"
-                            $existingTests += $newTest
-                            $testId = $newTest.Id
-                        } catch {
-                            Write-Log -Message "Failed to create test $serviceName : $_" -Level 'ERROR'
-                            $result.Failed++
-                            continue
-                        }
-                    } else {
-                        Write-Log -Message "Using existing test: $($existingTest.Title) (ID: $($existingTest.Id))"
-                        $testId = $existingTest.Id
+                    try {
+                        $resolveResult = Resolve-DefectDojoTest -EngagementId $engagementId `
+                                                               -TestName $serviceName `
+                                                               -TestTypeName 'SARIF' `
+                                                               -ExistingTests $existingTests `
+                                                               -AlternateNames $alternateNames
+                        $testId = $resolveResult.TestId
+                        $existingTests = $resolveResult.UpdatedTests
+                    } catch {
+                        Write-Log -Message "Failed to resolve/create test $serviceName : $_" -Level 'ERROR'
+                        $result.Failed++
+                        continue
                     }
 
                     $tagParams = Get-UploadTags -Config $Config
@@ -420,15 +388,6 @@ function Invoke-Workflow-GitHubSecretScanning {
             }
             $existingTests = Get-DefectDojoTests -EngagementId $engagementId
 
-            # Get test type ID for Universal Parser - GitHub Secret Scanning
-            try {
-                $secretScanTestTypeId = Get-DefectDojoTestType -TestTypeName 'Universal Parser - GitHub Secret Scanning'
-            } catch {
-                Write-Log -Message "Failed to lookup 'Universal Parser - GitHub Secret Scanning' test type: $_" -Level 'ERROR'
-                $result.Failed = $result.Total
-                return $result
-            }
-
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
 
             foreach ($file in $jsonFiles) {
@@ -442,24 +401,20 @@ function Invoke-Workflow-GitHubSecretScanning {
                     }
 
                     $serviceName = "$repoNameOnly (Secret Scanning)"
-                    $existingTest = $existingTests | Where-Object {
-                        $_.title -in @($serviceName, "$baseServiceName (Secret Scanning)", "$repoName (Secret Scanning)")
-                    } | Select-Object -First 1
+                    $alternateNames = @("$baseServiceName (Secret Scanning)", "$repoName (Secret Scanning)")
 
-                    if (-not $existingTest) {
-                        Write-Log -Message "Creating new test: $serviceName"
-                        try {
-                            $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $serviceName -TestType $secretScanTestTypeId
-                            Write-Log -Message "Test created successfully: $serviceName (ID: $($newTest.Id))"
-                            $testId = $newTest.Id
-                        } catch {
-                            Write-Log -Message "Failed to create test $serviceName : $_" -Level 'ERROR'
-                            $result.Failed++
-                            continue
-                        }
-                    } else {
-                        Write-Log -Message "Using existing test: $serviceName (ID: $($existingTest.Id))"
-                        $testId = $existingTest.Id
+                    try {
+                        $resolveResult = Resolve-DefectDojoTest -EngagementId $engagementId `
+                                                               -TestName $serviceName `
+                                                               -TestTypeName 'Universal Parser - GitHub Secret Scanning' `
+                                                               -ExistingTests $existingTests `
+                                                               -AlternateNames $alternateNames
+                        $testId = $resolveResult.TestId
+                        $existingTests = $resolveResult.UpdatedTests
+                    } catch {
+                        Write-Log -Message "Failed to resolve/create test $serviceName : $_" -Level 'ERROR'
+                        $result.Failed++
+                        continue
                     }
 
                     $tagParams = Get-UploadTags -Config $Config
@@ -530,26 +485,20 @@ function Invoke-Workflow-GitHubDependabot {
                     return $result
                 }
                 
-                # Look for existing test or create new one
+                # Look for existing test or create new one using helper
                 $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
                 $testName = "GitHub Dependabot"
-                $existingTest = $existingTests | Where-Object { $_.Title -eq $testName } | Select-Object -First 1
                 
-                if ($existingTest) {
-                    Write-Log -Message "Using existing DefectDojo test: $testName (ID: $($existingTest.Id))"
-                    $dependabotTestId = $existingTest.Id
-                } else {
-                    Write-Log -Message "Creating new DefectDojo test: $testName"
-                    try {
-                        $dependabotTestTypeId = Get-DefectDojoTestType -TestTypeName 'Universal Parser - GitHub Dependabot Aert5s'
-                        $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $testName -TestType $dependabotTestTypeId
-                        Write-Log -Message "Test created successfully: $testName (ID: $($newTest.Id))"
-                        $dependabotTestId = $newTest.Id
-                    } catch {
-                        Write-Log -Message "Failed to create Dependabot test: $_" -Level 'ERROR'
-                        $result.Failed = 1
-                        return $result
-                    }
+                try {
+                    $resolveResult = Resolve-DefectDojoTest -EngagementId $engagementId `
+                                                           -TestName $testName `
+                                                           -TestTypeName 'Universal Parser - GitHub Dependabot Aert5s' `
+                                                           -ExistingTests $existingTests
+                    $dependabotTestId = $resolveResult.TestId
+                } catch {
+                    Write-Log -Message "Failed to resolve/create Dependabot test: $_" -Level 'ERROR'
+                    $result.Failed = 1
+                    return $result
                 }
             }
 
