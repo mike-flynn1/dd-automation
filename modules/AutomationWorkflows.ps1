@@ -311,6 +311,15 @@ function Invoke-Workflow-GitHubCodeQL {
             }
             $existingTests = @(Get-DefectDojoTests -EngagementId $engagementId)
             
+            # Get test type ID for SARIF
+            try {
+                $sarifTestTypeId = Get-DefectDojoTestType -TestTypeName 'SARIF'
+            } catch {
+                Write-Log -Message "Failed to lookup 'SARIF' test type: $_" -Level 'ERROR'
+                $result.Failed = $result.Total
+                return $result
+            }
+            
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
             
             foreach ($file in $sarifFiles) {
@@ -330,7 +339,7 @@ function Invoke-Workflow-GitHubCodeQL {
                     if (-not $existingTest) {
                         Write-Log -Message "Creating new test: $serviceName"
                         try {
-                            $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $serviceName -TestType 20
+                            $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $serviceName -TestType $sarifTestTypeId
                             Write-Log -Message "Test created successfully: $serviceName (ID: $($newTest.Id))"
                             $existingTests += $newTest
                             $testId = $newTest.Id
@@ -411,6 +420,15 @@ function Invoke-Workflow-GitHubSecretScanning {
             }
             $existingTests = Get-DefectDojoTests -EngagementId $engagementId
 
+            # Get test type ID for Universal Parser - GitHub Secret Scanning
+            try {
+                $secretScanTestTypeId = Get-DefectDojoTestType -TestTypeName 'Universal Parser - GitHub Secret Scanning'
+            } catch {
+                Write-Log -Message "Failed to lookup 'Universal Parser - GitHub Secret Scanning' test type: $_" -Level 'ERROR'
+                $result.Failed = $result.Total
+                return $result
+            }
+
             $closeOldFindings = if ($Config.DefectDojo.CloseOldFindings -is [bool]) { $Config.DefectDojo.CloseOldFindings } else { $false }
 
             foreach ($file in $jsonFiles) {
@@ -431,7 +449,7 @@ function Invoke-Workflow-GitHubSecretScanning {
                     if (-not $existingTest) {
                         Write-Log -Message "Creating new test: $serviceName"
                         try {
-                            $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $serviceName -TestType 215
+                            $newTest = New-DefectDojoTest -EngagementId $engagementId -TestName $serviceName -TestType $secretScanTestTypeId
                             Write-Log -Message "Test created successfully: $serviceName (ID: $($newTest.Id))"
                             $testId = $newTest.Id
                         } catch {
