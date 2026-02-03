@@ -43,8 +43,10 @@ $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'DefectDojo.ps1')
 . (Join-Path $scriptDir 'Sonarqube.ps1')
 . (Join-Path $scriptDir 'Uploader.ps1')
+. (Join-Path $scriptDir 'AutomationWorkflows.ps1')
+
 # Initialize logging
-Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomationLauncher_Renewed.log' -Overwrite
+Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomation_GUI.log' -MaxLogFiles 3
 Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
 
 $script:gitHubFeatureMap = [ordered]@{
@@ -133,7 +135,7 @@ function Initialize-GuiElements {
     # Form settings
     $form.Text = 'DD Automation Launcher'
     $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(640, 900)
+    $form.Size = New-Object System.Drawing.Size(640, 975)
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
 
@@ -241,11 +243,27 @@ function Initialize-GuiElements {
     $form.Controls.AddRange(@($lblDDCloseFindings, $script:chkDDCloseFindings))
     $script:toolTip.SetToolTip($script:chkDDCloseFindings, 'When checked, old findings will be closed on reimport. When unchecked, previous findings are preserved.')
 
+    # Tags TextBox and Label
+    $lblTags = New-Object System.Windows.Forms.Label -Property @{ Text = 'Tags:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 570) }
+    $script:txtTags = New-Object System.Windows.Forms.TextBox -Property @{ Location = New-Object System.Drawing.Point(150, 568); Size = New-Object System.Drawing.Size(300, 20); Enabled = $false }
+    $form.Controls.AddRange(@($lblTags, $script:txtTags))
+    $script:toolTip.SetToolTip($script:txtTags, 'Enter tags to apply to all scan uploads (e.g., automated-scan, dd-automation). Separate multiple tags with commas.')
+
+    # Apply Tags to Findings Checkbox
+    $script:chkApplyTagsToFindings = New-Object System.Windows.Forms.CheckBox -Property @{ Text = 'Apply tags to findings'; AutoSize = $true; Location = New-Object System.Drawing.Point(150, 595); Checked = $false; Enabled = $false }
+    $form.Controls.Add($script:chkApplyTagsToFindings)
+    $script:toolTip.SetToolTip($script:chkApplyTagsToFindings, 'When checked, tags will be applied to individual findings as well as the test.')
+
+    # Apply Tags to Endpoints Checkbox
+    $script:chkApplyTagsToEndpoints = New-Object System.Windows.Forms.CheckBox -Property @{ Text = 'Apply tags to endpoints'; AutoSize = $true; Location = New-Object System.Drawing.Point(150, 620); Checked = $false; Enabled = $false }
+    $form.Controls.Add($script:chkApplyTagsToEndpoints)
+    $script:toolTip.SetToolTip($script:chkApplyTagsToEndpoints, 'When checked, tags will be applied to endpoints as well as the test.')
+
     # Manual Upload (DefectDojo CLI) GroupBox
     $grpManualTool = New-Object System.Windows.Forms.GroupBox
     $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
     $grpManualTool.Size = New-Object System.Drawing.Size(580, 80)
-    $grpManualTool.Location = New-Object System.Drawing.Point(10, 570)
+    $grpManualTool.Location = New-Object System.Drawing.Point(10, 650)
     $form.Controls.Add($grpManualTool)
 
     # Launch DefectDojo CLI Button
@@ -265,18 +283,18 @@ function Initialize-GuiElements {
     # Add tooltip for Launch DefectDojo CLI button
     $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
 
-    # Status ListBox (moved down to accommodate new group)
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 660) }
+    # Status ListBox (moved down to accommodate new controls)
+    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 740) }
     $form.Controls.Add($lstStatus)
 
     # Action Buttons
-    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 795); Size = New-Object System.Drawing.Size(80, 30) }
-    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 795); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 900); Size = New-Object System.Drawing.Size(80, 30) }
+    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 900); Size = New-Object System.Drawing.Size(80, 30) }
     
     # Add completion message label
     $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
         Text = ""; 
-        Location = New-Object System.Drawing.Point(10, 830); 
+        Location = New-Object System.Drawing.Point(10, 910); 
         Size = New-Object System.Drawing.Size(400, 25);
         Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
         ForeColor = [System.Drawing.Color]::Green;
@@ -325,6 +343,9 @@ function Register-EventHandlers {
     $chkBoxes['DefectDojo'].Add_CheckedChanged({
         $script:cmbDDSeverity.Enabled = $this.Checked
         $script:chkDDCloseFindings.Enabled = $this.Checked
+        $script:txtTags.Enabled = $this.Checked
+        $script:chkApplyTagsToFindings.Enabled = $this.Checked
+        $script:chkApplyTagsToEndpoints.Enabled = $this.Checked
     })
 
     # Browse for BurpSuite folder
@@ -610,6 +631,9 @@ function Prepopulate-FormFromConfig {
     if ($script:chkBoxes['DefectDojo'].Checked) {
         $script:cmbDDSeverity.Enabled = $true
         $script:chkDDCloseFindings.Enabled = $true
+        $script:txtTags.Enabled = $true
+        $script:chkApplyTagsToFindings.Enabled = $true
+        $script:chkApplyTagsToEndpoints.Enabled = $true
     }
 
     if ($script:chkBoxes['TenableWAS'].Checked) {
@@ -682,6 +706,16 @@ function Prepopulate-FormFromConfig {
         }
         if ($Config.DefectDojo.CloseOldFindings) {
             $script:chkDDCloseFindings.Checked = $Config.DefectDojo.CloseOldFindings
+        }
+        if ($Config.DefectDojo.Tags) {
+            $tagsText = ($Config.DefectDojo.Tags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ', '
+            $script:txtTags.Text = $tagsText
+        }
+        if ($Config.DefectDojo.ApplyTagsToFindings) {
+            $script:chkApplyTagsToFindings.Checked = $Config.DefectDojo.ApplyTagsToFindings
+        }
+        if ($Config.DefectDojo.ApplyTagsToEndpoints) {
+            $script:chkApplyTagsToEndpoints.Checked = $Config.DefectDojo.ApplyTagsToEndpoints
         }
     }
     Write-GuiMessage "Pre-population complete."
@@ -797,6 +831,12 @@ function Invoke-Automation {
             }
         }
 
+        # Save DefectDojo selections to config BEFORE running workflows
+        # This ensures all modules that call Get-Config internally will use the updated values
+        if ($config.Tools.DefectDojo) {
+            Save-DefectDojoConfig -Config $config
+        }
+
         $selectedToolLabels = @()
         foreach ($tool in $script:tools) {
             $isEnabled = $false
@@ -814,37 +854,44 @@ function Invoke-Automation {
 
         # Process TenableWAS
         if ($config.Tools.TenableWAS) {
-            Process-TenableWAS -Config $config
+            Write-GuiMessage "Starting TenableWAS workflow..."
+            Invoke-Workflow-TenableWAS -Config $config
+            Write-GuiMessage "TenableWAS workflow finished."
         }
 
         # Process SonarQube
         if ($config.Tools.SonarQube) {
-            Process-SonarQube -Config $config
+            Write-GuiMessage "Starting SonarQube workflow..."
+            Invoke-Workflow-SonarQube -Config $config
+            Write-GuiMessage "SonarQube workflow finished."
         }
 
         # Process BurpSuite
         if ($config.Tools.BurpSuite) {
-            Process-BurpSuite -Config $config
+            Write-GuiMessage "Starting BurpSuite workflow..."
+            Invoke-Workflow-BurpSuite -Config $config
+            Write-GuiMessage "BurpSuite workflow finished."
         }
 
         # Process GitHub CodeQL
         if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubCodeQL') {
-            Process-GitHubCodeQL -Config $config
+            Write-GuiMessage "Starting GitHub CodeQL workflow..."
+            Invoke-Workflow-GitHubCodeQL -Config $config
+            Write-GuiMessage "GitHub CodeQL workflow finished."
         }
 
         # Process GitHub Secret Scanning
         if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubSecretScanning') {
-            Process-GitHubSecretScanning -Config $config
+            Write-GuiMessage "Starting GitHub Secret Scanning workflow..."
+            Invoke-Workflow-GitHubSecretScanning -Config $config
+            Write-GuiMessage "GitHub Secret Scanning workflow finished."
         }
 
         # Process GitHub Dependabot alerts
         if (Get-GitHubFeatureState -Config $config -ToolKey 'GitHubDependabot') {
-            Process-GitHubDependabot -Config $config
-        }
-
-        # Save DefectDojo selections back to config
-        if ($config.Tools.DefectDojo) {
-            Save-DefectDojoConfig -Config $config
+            Write-GuiMessage "Starting GitHub Dependabot workflow..."
+            Invoke-Workflow-GitHubDependabot -Config $config
+            Write-GuiMessage "GitHub Dependabot workflow finished."
         }
 
         # Expose the updated config to the parent session for potential post-script actions
@@ -864,396 +911,6 @@ function Invoke-Automation {
     }
 }
 
-function Process-TenableWAS {
-    param([hashtable]$Config)
-
-    if (-not $Config.TenableWASSelectedScans -or $Config.TenableWASSelectedScans.Count -eq 0) {
-        Write-GuiMessage "No TenableWAS scans selected." 'WARNING'
-        return
-    }
-
-    # Initialize DefectDojo-specific variables if DefectDojo is enabled
-    if ($Config.Tools.DefectDojo) {
-        # Verify engagement is selected (required for test creation)
-        $engagement = $script:cmbDDEng.SelectedItem
-        if (-not $engagement) {
-            Write-GuiMessage "No DefectDojo engagement selected; cannot create TenableWAS tests." 'ERROR'
-            return
-        }
-
-        # Get test_type ID dynamically by looking up 'Tenable Scan' parser name
-        # This ensures compatibility across different DefectDojo instances where test type IDs may differ
-        try {
-            $tenableTestTypeId = Get-DefectDojoTestType -TestTypeName 'Tenable Scan'
-            Write-GuiMessage "Resolved 'Tenable Scan' test type to ID: $tenableTestTypeId"
-        } catch {
-            Write-GuiMessage "Failed to lookup 'Tenable Scan' test type: $_" 'ERROR'
-            return
-        }
-
-        # Retrieve existing tests once for efficiency
-        $existingTests = @(Get-DefectDojoTests -EngagementId $engagement.Id)
-    }
-
-    $uploadErrors = 0
-    $totalScans = $Config.TenableWASSelectedScans.Count
-
-    foreach ($scan in $Config.TenableWASSelectedScans) {
-        Write-GuiMessage "Starting TenableWAS scan export (Scan: $($scan.Name) - ID: $($scan.Id))"
-        try {
-            # Step 1: Export scan report
-            $exportedFile = Export-TenableWASScan -ScanName $scan.Name
-            Write-GuiMessage "TenableWAS scan export completed: $exportedFile"
-
-            if ($Config.Tools.DefectDojo) {
-                Write-GuiMessage "Processing TenableWAS scan for DefectDojo upload..."
-
-                # Step 2: Determine test name
-                $serviceName = "$($scan.Name) (Tenable WAS)"
-
-                # Step 3: Check if test exists
-                $existingTest = $existingTests | Where-Object {
-                    $_.Title -in @($serviceName, $scan.Name, "$($scan.Name) (Tenable)")
-                } | Select-Object -First 1
-
-                if (-not $existingTest) {
-                    # Step 4a: Create new test
-                    Write-GuiMessage "Creating new DefectDojo test: $serviceName"
-                    try {
-                        $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType $tenableTestTypeId
-                        Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
-                        $existingTests = @($existingTests) + $newTest  # Add to cache
-                        $testId = $newTest.Id
-                    } catch {
-                        $errorMsg = $_.Exception.Message
-                        Write-GuiMessage "Failed to create test ${serviceName}: $errorMsg" 'ERROR'
-                        $uploadErrors++
-                        continue  # Skip to next scan
-                    }
-                } else {
-                    # Step 4b: Use existing test
-                    Write-GuiMessage "Using existing DefectDojo test: $($existingTest.Title) (ID: $($existingTest.Id))"
-                    $testId = $existingTest.Id
-                }
-
-                # Step 5: Upload scan to test
-                $filePathString = ([string]$exportedFile).Trim()
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $testId -ScanType 'Tenable Scan' -CloseOldFindings $script:chkDDCloseFindings.Checked
-                Write-GuiMessage "TenableWAS scan report uploaded successfully to DefectDojo test: $serviceName"
-            }
-        } catch {
-            $uploadErrors++
-            Write-GuiMessage "TenableWAS processing failed for $($scan.Name): $_" 'ERROR'
-        }
-    }
-
-    # Summary reporting
-    if ($Config.Tools.DefectDojo) {
-        if ($uploadErrors -eq 0) {
-            Write-GuiMessage "All $totalScans TenableWAS scans uploaded successfully to DefectDojo"
-        } else {
-            $successCount = $totalScans - $uploadErrors
-            Write-GuiMessage "TenableWAS upload completed: $successCount successful, $uploadErrors failed" 'WARNING'
-        }
-    }
-}
-
-function Process-SonarQube {
-    param([hashtable]$Config)
-    Write-GuiMessage "Processing SonarQube scan..."
-    try {
-        $apiScanConfig = $script:cmbDDApiScan.SelectedItem
-        $test = $script:cmbDDTestSonar.SelectedItem
-        Invoke-SonarQubeProcessing -ApiScanConfiguration $apiScanConfig.Id -Test $test.Id
-        Write-GuiMessage "SonarQube processing completed for test $($test.Name)"
-    } catch {
-        Write-GuiMessage "SonarQube processing failed: $_" 'ERROR'
-    }
-}
-
-function Process-BurpSuite {
-    param([hashtable]$Config)
-    Write-GuiMessage "Starting BurpSuite XML report processing..."
-    try {
-        # Get XML files from configured folder
-        $xmlFiles = Get-BurpSuiteReports -FolderPath $Config.Paths.BurpSuiteXmlFolder
-
-        if (-not $xmlFiles -or $xmlFiles.Count -eq 0) {
-            Write-GuiMessage "No BurpSuite XML files found in folder: $($Config.Paths.BurpSuiteXmlFolder)" 'WARNING'
-            return
-        }
-
-        Write-GuiMessage "Found $($xmlFiles.Count) BurpSuite XML report(s)"
-
-        if ($Config.Tools.DefectDojo) {
-            Write-GuiMessage "Uploading BurpSuite report to DefectDojo..."
-
-            # Get the specifically selected BurpSuite test
-            $burpTest = $script:cmbDDTestBurp.SelectedItem
-            if (-not $burpTest) {
-                Write-GuiMessage "No BurpSuite test selected for DefectDojo upload" 'WARNING'
-                return
-            }
-
-            # Upload only the first XML file found
-            $xmlFile = $xmlFiles[0]
-            $fileName = [System.IO.Path]::GetFileName($xmlFile)
-
-            if ($xmlFiles.Count -gt 1) {
-                Write-GuiMessage "Multiple XML files found. Uploading only: $fileName" 'WARNING'
-                Write-GuiMessage "Other files will be ignored. Process one scan at a time." 'WARNING'
-            }
-
-            try {
-                Write-GuiMessage "Uploading $fileName to DefectDojo test: $($burpTest.Title)"
-
-                # Ensure file path is explicitly converted to string
-                $filePathString = ([string]$xmlFile).Trim()
-
-                # Upload to DefectDojo using Burp Scan type
-                Upload-DefectDojoScan -FilePath $filePathString -TestId $burpTest.Id -ScanType 'Burp Scan' -CloseOldFindings $script:chkDDCloseFindings.Checked
-                Write-GuiMessage "Successfully uploaded $fileName to DefectDojo test: $($burpTest.Title)"
-            } catch {
-                Write-GuiMessage "Failed to upload $fileName : $_" 'ERROR'
-            }
-        }
-    } catch {
-        Write-GuiMessage "BurpSuite processing failed: $_" 'ERROR'
-    }
-}
-
-function Process-GitHubCodeQL {
-    param([hashtable]$Config)
-    Write-GuiMessage "Starting GitHub CodeQL download..."
-    try {
-        $orgs = @($Config.GitHub.Orgs)
-        if (-not $orgs -or $orgs.Count -eq 0) {
-            Write-GuiMessage "No GitHub organizations configured. Skipping GitHub processing." 'WARNING'
-            return
-        }
-
-        Write-GuiMessage ("Processing GitHub organizations: {0}" -f ($orgs -join ', '))
-
-        GitHub-CodeQLDownload -Owners $orgs
-        Write-GuiMessage "GitHub CodeQL download completed."
-
-        if ($Config.Tools.DefectDojo) {
-            Write-GuiMessage "Uploading GitHub CodeQL reports to DefectDojo..."
-            $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubCodeScanning'
-            $sarifFiles = Get-ChildItem -Path $downloadRoot -Filter '*.sarif' -Recurse | Select-Object -ExpandProperty FullName
-            $uploadErrors = 0
-
-            $engagement = $script:cmbDDEng.SelectedItem
-            if (-not $engagement) {
-                Write-GuiMessage "No DefectDojo engagement selected; skipping GitHub uploads." 'WARNING'
-                return
-            }
-            $existingTests = @(Get-DefectDojoTests -EngagementId $engagement.Id)
-            
-            foreach ($file in $sarifFiles) {
-                try {
-                    # Extract service name from SARIF file
-                    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
-
-                    # Remove numeric suffixes
-                    $baseServiceName = $fileName -replace '-\d+$', ''
-                    $repoNameOnly = $baseServiceName
-                    if ($baseServiceName -match '^(?<org>[^-]+)-(?<repo>.+)$') {
-                        $repoNameOnly = $Matches['repo']
-                    }
-
-                    $serviceNameCore = $repoNameOnly
-                    $serviceName = "$serviceNameCore (CodeQL)"
-
-                    # Check if test exists, create if not
-                    $existingTest = $existingTests | Where-Object { $_.title -in @($serviceName, $serviceNameCore, $repoNameOnly) } | Select-Object -First 1
-
-                    if (-not $existingTest) {
-                        Write-GuiMessage "Creating new test: $serviceName"
-                        try {
-                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 20 #hard coded in DD why
-                            Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
-                            $existingTests = @($existingTests) + $newTest
-                        } catch {
-                            Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
-                            continue
-                        }
-                        #Upload with new test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'SARIF' -CloseOldFindings $script:chkDDCloseFindings.Checked
-                    } else {
-                        Write-GuiMessage "Using existing test: $($existingTest.Title) (ID: $($existingTest.Id))"
-                        #Upload with existing test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'SARIF' -CloseOldFindings $script:chkDDCloseFindings.Checked
-                    }
-
-
-                } catch {
-                    $uploadErrors++
-                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
-                }
-            }
-
-            if ($uploadErrors -eq 0) {
-                Write-GuiMessage "GitHub CodeQL reports uploaded successfully to DefectDojo"
-                # Clean up downloaded files after successful uploads
-                try {
-                    Write-GuiMessage "Cleaning up downloaded GitHub CodeQL files..."
-                    Remove-Item -Path $downloadRoot -Recurse -Force
-                    Write-GuiMessage "GitHub CodeQL download directory cleaned up successfully"
-                } catch {
-                    Write-GuiMessage "Failed to clean up download directory: $_" 'WARNING'
-                }
-            } else {
-                Write-GuiMessage "GitHub CodeQL upload completed with $uploadErrors error(s). Download files retained for review." 'WARNING'
-            }
-        }
-    } catch {
-        Write-GuiMessage "GitHub CodeQL processing failed: $_" 'ERROR'
-    }
-}
-
-function Process-GitHubSecretScanning {
-    param([hashtable]$Config)
-    Write-GuiMessage "Starting GitHub Secret Scanning download..."
-    try {
-        $orgs = @($Config.GitHub.Orgs)
-        if (-not $orgs -or $orgs.Count -eq 0) {
-            Write-GuiMessage 'No GitHub organizations configured. Skipping GitHub Secret Scanning.' 'WARNING'
-            return
-        }
-
-        Write-GuiMessage ("Processing GitHub organizations for secret scanning: {0}" -f ($orgs -join ', '))
-        GitHub-SecretScanDownload -Owners $orgs
-        Write-GuiMessage "GitHub Secret Scanning download completed."
-
-        if ($Config.Tools.DefectDojo) {
-            Write-GuiMessage "Uploading GitHub Secret Scanning reports to DefectDojo..."
-            $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubSecretScanning'
-            $jsonFiles = Get-ChildItem -Path $downloadRoot -Filter '*-secrets.json' -Recurse | Select-Object -ExpandProperty FullName
-            $uploadErrors = 0
-
-            foreach ($file in $jsonFiles) {
-                try {
-                    # Extract service name from JSON file (remove suffixes and org prefix)
-                    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
-                    $repoName = $fileName -replace '-secrets$', ''
-                    $baseServiceName = $repoName -replace '-\d+$', ''
-                    $repoNameOnly = $baseServiceName
-                    if ($baseServiceName -match '^(?<org>[^-]+)-(?<repo>.+)$') {
-                        $repoNameOnly = $Matches['repo']
-                    }
-
-                    # Append tool type to test name
-                    $serviceName = "$repoNameOnly (Secret Scanning)"
-
-                    # Check if test exists, create if not
-                    $engagement = $script:cmbDDEng.SelectedItem
-                    $existingTests = Get-DefectDojoTests -EngagementId $engagement.Id
-                    $existingTest = $existingTests | Where-Object {
-                        $_.title -in @(
-                            $serviceName,
-                            "$baseServiceName (Secret Scanning)",
-                            "$repoName (Secret Scanning)"
-                        )
-                    } | Select-Object -First 1
-
-                    if (-not $existingTest) {
-                        Write-GuiMessage "Creating new test: $serviceName"
-                        try {
-                            $newTest = New-DefectDojoTest -EngagementId $engagement.Id -TestName $serviceName -TestType 215 #also hard coded in DD why
-                            Write-GuiMessage "Test created successfully: $serviceName (ID: $($newTest.Id))"
-                        } catch {
-                            Write-GuiMessage "Failed to create test $serviceName : $_" 'ERROR'
-                            continue
-                        }
-                        #Upload with new test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $newTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $script:chkDDCloseFindings.Checked
-                    } else {
-                        Write-GuiMessage "Using existing test: $serviceName (ID: $($existingTest.Id))"
-                        #Upload with existing test ID
-                        Upload-DefectDojoScan -FilePath $file -TestId $existingTest.Id -ScanType 'Universal Parser - GitHub Secret Scanning' -CloseOldFindings $script:chkDDCloseFindings.Checked
-                    }
-                } catch {
-                    $uploadErrors++
-                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
-                }
-            }
-
-            if ($uploadErrors -eq 0) {
-                Write-GuiMessage "GitHub Secret Scanning reports uploaded successfully to DefectDojo"
-                # Clean up downloaded files after successful uploads
-                try {
-                    Write-GuiMessage "Cleaning up downloaded GitHub Secret Scanning files..."
-                    Remove-Item -Path $downloadRoot -Recurse -Force
-                    Write-GuiMessage "GitHub Secret Scanning download directory cleaned up successfully"
-                } catch {
-                    Write-GuiMessage "Failed to clean up download directory: $_" 'WARNING'
-                }
-            } else {
-                Write-GuiMessage "GitHub Secret Scanning upload completed with $uploadErrors error(s). Download files retained for review." 'WARNING'
-            }
-        }
-    } catch {
-        Write-GuiMessage "GitHub Secret Scanning processing failed: $_" 'ERROR'
-    }
-}
-
-function Process-GitHubDependabot {
-    param([hashtable]$Config)
-    Write-GuiMessage "Starting GitHub Dependabot download..."
-    try {
-        $orgs = @($Config.GitHub.Orgs)
-        if (-not $orgs -or $orgs.Count -eq 0) {
-            Write-GuiMessage 'No GitHub organizations configured. Skipping Dependabot export.' 'WARNING'
-            return
-        }
-
-        Write-GuiMessage ("Processing GitHub organizations for Dependabot: {0}" -f ($orgs -join ', '))
-        $dependabotFiles = GitHub-DependabotDownload -Owners $orgs
-        Write-GuiMessage "GitHub Dependabot download completed."
-
-        if (-not $dependabotFiles -or $dependabotFiles.Count -eq 0) {
-            Write-GuiMessage 'No open Dependabot alerts downloaded; skipping uploads.'
-            return
-        }
-
-        if ($Config.Tools.DefectDojo) {
-            Write-GuiMessage "Uploading GitHub Dependabot JSON files to DefectDojo..."
-            $dependabotTest = $script:cmbDDTestDependabot.SelectedItem
-            if (-not $dependabotTest) {
-                Write-GuiMessage 'No DefectDojo Dependabot test selected; skipping uploads.' 'WARNING'
-                return
-            }
-
-            $uploadErrors = 0
-            foreach ($file in $dependabotFiles) {
-                try {
-                    Upload-DefectDojoScan -FilePath $file -TestId $dependabotTest.Id -ScanType 'Universal Parser - GitHub Dependabot Aert5s' -CloseOldFindings $script:chkDDCloseFindings.Checked
-                    Write-GuiMessage "Uploaded Dependabot JSON: $([System.IO.Path]::GetFileName($file)) to test $($dependabotTest.Name)"
-                } catch {
-                    $uploadErrors++
-                    Write-GuiMessage "Failed to upload $file to DefectDojo: $_" 'ERROR'
-                }
-            }
-
-            if ($uploadErrors -eq 0) {
-                Write-GuiMessage "GitHub Dependabot JSON files uploaded successfully to $($dependabotTest.Name)"
-                $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) 'GitHubDependabot'
-                try {
-                    Remove-Item -Path $downloadRoot -Recurse -Force
-                    Write-GuiMessage "GitHub Dependabot download directory cleaned up successfully"
-                } catch {
-                    Write-GuiMessage "Failed to clean up Dependabot download directory: $_" 'WARNING'
-                }
-            } else {
-                Write-GuiMessage "Dependabot uploads completed with $uploadErrors error(s); downloaded files retained for review." 'WARNING'
-            }
-        }
-    } catch {
-        Write-GuiMessage "GitHub Dependabot processing failed: $_" 'ERROR'
-    }
-}
-
 function Save-DefectDojoConfig {
     param([hashtable]$Config)
 
@@ -1269,13 +926,26 @@ function Save-DefectDojoConfig {
 
     $dependabotEnabled = Get-GitHubFeatureState -Config $Config -ToolKey 'GitHubDependabot'
 
+    # Parse and save tags
+    $tagsText = $script:txtTags.Text.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($tagsText)) {
+        # Split by comma, trim whitespace, filter empties
+        $tagArray = @($tagsText -split ',' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if (-not $Config.DefectDojo) { $Config.DefectDojo = @{} }
+        $Config.DefectDojo.Tags = $tagArray
+    } else {
+        if (-not $Config.DefectDojo) { $Config.DefectDojo = @{} }
+        $Config.DefectDojo.Tags = @()
+    }
+    # Save tag flags
+    if (-not $Config.DefectDojo) { $Config.DefectDojo = @{} }
+    $Config.DefectDojo.ApplyTagsToFindings = $script:chkApplyTagsToFindings.Checked
+    $Config.DefectDojo.ApplyTagsToEndpoints = $script:chkApplyTagsToEndpoints.Checked
+
     # Validate that all necessary selections have been made
     $incomplete = $false
     if (-not $selections.Product -or -not $selections.Engagement) { $incomplete = $true }
     if ($Config.Tools.SonarQube -and (-not $selections.SonarQubeTest -or -not $selections.ApiScanConfig)) { $incomplete = $true }
-    if ($Config.Tools.BurpSuite -and -not $selections.BurpSuiteTest) { $incomplete = $true }
-    if ($dependabotEnabled -and $Config.Tools.DefectDojo -and -not $selections.GitHubDependabotTest) { $incomplete = $true }
-
     if ($incomplete) {
         Write-GuiMessage 'DefectDojo selections incomplete; skipping config save.' 'WARNING'
         return
@@ -1291,6 +961,9 @@ function Save-DefectDojoConfig {
         GitHubDependabotTestId = $selections.GitHubDependabotTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
         CloseOldFindings  = $script:chkDDCloseFindings.Checked
+        ApplyTagsToFindings = $script:chkApplyTagsToFindings.Checked
+        ApplyTagsToEndpoints = $script:chkApplyTagsToEndpoints.Checked
+        Tags = $Config.DefectDojo.Tags  # Preserve tags that were saved before validation
     }
 
     Write-GuiMessage "Saving DefectDojo selections to config file..."
@@ -1331,4 +1004,3 @@ function Main {
 Main
 
 #endregion Script Entry Point
-

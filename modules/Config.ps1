@@ -3,12 +3,58 @@
     Module for loading and validating the automation tool configuration.
 #>
 
+# Global-scoped variable to track the active config path across all module instances
+# Using global scope because Config.ps1 is dot-sourced by multiple modules,
+# and script scope would be isolated per dot-source operation
+if (-not $global:DDAutomation_ActiveConfigPath) {
+    $global:DDAutomation_ActiveConfigPath = $null
+}
+
+function Set-ActiveConfigPath {
+    <#
+    .SYNOPSIS
+        Sets the active configuration path for the current session.
+    .DESCRIPTION
+        Stores the configuration file path in a global variable so that
+        internal Get-Config calls across all modules use the correct config file.
+    .PARAMETER Path
+        The configuration file path to use.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    
+    $global:DDAutomation_ActiveConfigPath = $Path
+    Write-Verbose "Active config path set to: $Path"
+}
+
 function Get-Config {
     [CmdletBinding()]
     param(
-        [string]$ConfigPath   = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1'),
+        [string]$ConfigPath,
         [string]$TemplatePath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1.example')
     )
+
+    # Determine which config path to use:
+    # 1. Explicit parameter (highest priority)
+    # 2. Global active path (set by CLI/GUI at startup, shared across all modules)
+    # 3. Default config.psd1 (fallback)
+    if (-not $ConfigPath) {
+        if ($global:DDAutomation_ActiveConfigPath) {
+            $ConfigPath = $global:DDAutomation_ActiveConfigPath
+            Write-Verbose "Using active config path: $ConfigPath"
+        } else {
+            $ConfigPath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')
+            Write-Verbose "Using default config path: $ConfigPath"
+        }
+    }
+    
+    # Store the config path for future internal calls (if not already set)
+    if (-not $global:DDAutomation_ActiveConfigPath) {
+        $global:DDAutomation_ActiveConfigPath = $ConfigPath
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($ConfigPath) -and (Test-Path -Path $ConfigPath)) {
         Write-Verbose "Loading configuration from $ConfigPath"
@@ -107,6 +153,31 @@ function Validate-Config {
         }
     }
 
+    # Validate DefectDojo tags if present
+    if ($Config.DefectDojo -isnot [hashtable]) {
+        $errors += 'Configuration.DefectDojo must be a hashtable of DefectDojo settings'
+    }
+        else {
+        if ($Config.DefectDojo -and $Config.DefectDojo.ContainsKey('Tags')) {
+            $tags = $Config.DefectDojo.Tags
+            if ($null -ne $tags) {
+                # Tags must be an array (or enumerable), not a single string
+                if ($tags -isnot [System.Collections.IEnumerable] -or $tags -is [string]) {
+                    $errors += 'Configuration.DefectDojo.Tags must be an array of strings'
+                }
+                elseif ($tags -is [System.Collections.IEnumerable]) {
+                    # Validate each tag is non-empty string
+                    foreach ($tag in $tags) {
+                        if ($tag -isnot [string] -or [string]::IsNullOrWhiteSpace($tag)) {
+                            $errors += 'Configuration.DefectDojo.Tags contains empty or non-string tag values'
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if ($errors.Count -gt 0) {
         Throw ($errors -join '; ')
     }
@@ -195,9 +266,23 @@ function Save-Config {
         $sb.AppendLine('    DefectDojo = @{') | Out-Null
         foreach ($key in $Config.DefectDojo.Keys) {
             $val = $Config.DefectDojo[$key]
-            if ($null -eq $val -or $val -is [string]) {
+            # Handle Tags array specifically
+            if ($key -eq 'Tags' -and $val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($tag in $val) {
+                    if (-not [string]::IsNullOrWhiteSpace($tag)) {
+                        $escapedTag = $tag -replace "'","''"
+                        $sb.AppendLine("            '$escapedTag'") | Out-Null
+                    }
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            elseif ($null -eq $val -or $val -is [string]) {
                 $inner = if ($null -eq $val) { '' } else { $val }
                 $sb.AppendLine("        $key = '$inner'") | Out-Null
+            } elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
             } else {
                 $sb.AppendLine("        $key = $val") | Out-Null
             }
@@ -274,6 +359,42 @@ function Save-Config {
         $sb.AppendLine('    }') | Out-Null
     }
 
+    # Notifications configuration
+    if ($Config.ContainsKey('Notifications')) {
+        $sb.AppendLine('') | Out-Null
+        $sb.AppendLine('    Notifications = @{') | Out-Null
+        
+        foreach ($key in $Config.Notifications.Keys | Sort-Object) {
+            $val = $Config.Notifications[$key]
+            
+            if ($null -eq $val -or [string]::IsNullOrWhiteSpace($val)) {
+                # Skip empty values but preserve the key structure
+                $sb.AppendLine("        # $key = ''") | Out-Null
+            }
+            elseif ($val -is [string]) {
+                $escapedVal = $val -replace "'","''"
+                $sb.AppendLine("        $key = '$escapedVal'") | Out-Null
+            }
+            elseif ($val -is [bool]) {
+                $boolStr = if ($val) { '$true' } else { '$false' }
+                $sb.AppendLine("        $key = $boolStr") | Out-Null
+            }
+            elseif ($val -is [System.Collections.IEnumerable] -and $val -isnot [string]) {
+                $sb.AppendLine("        $key = @(") | Out-Null
+                foreach ($entry in $val) {
+                    $escapedEntry = $entry -replace "'","''"
+                    $sb.AppendLine("            '$escapedEntry'") | Out-Null
+                }
+                $sb.AppendLine('        )') | Out-Null
+            }
+            else {
+                $sb.AppendLine("        $key = $val") | Out-Null
+            }
+        }
+        
+        $sb.AppendLine('    }') | Out-Null
+    }
+
     $sb.AppendLine('}') | Out-Null
 
     try {
@@ -346,6 +467,70 @@ function Normalize-GitHubConfig {
             $null = $Config.ApiBaseUrls.Remove($legacyKey)
         }
     }
+}
+
+function Resolve-TenableWASScans {
+    <#
+    .SYNOPSIS
+        Resolves configured TenableWAS scan names to scan objects.
+    .PARAMETER Config
+        Configuration hashtable containing TenableWASScanNames.
+    .OUTPUTS
+        [object[]] Array of scan objects with Name/Id properties. Returns empty array on error.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Config
+    )
+
+    if (-not $Config.ContainsKey('TenableWASScanNames') -or -not $Config.TenableWASScanNames) {
+        Write-Verbose 'No TenableWAS scan names configured; skipping resolution.'
+        return @()
+    }
+
+    if (-not (Get-Command Get-TenableWASScanConfigs -ErrorAction SilentlyContinue)) {
+        $tenableModulePath = Join-Path $PSScriptRoot 'TenableWAS.ps1'
+        if (Test-Path $tenableModulePath) {
+            try {
+                . $tenableModulePath
+            } catch {
+                Write-Verbose "Failed to load TenableWAS module from $($tenableModulePath): $($_)"
+            }
+        }
+    }
+
+    if (-not (Get-Command Get-TenableWASScanConfigs -ErrorAction SilentlyContinue)) {
+        Write-Verbose 'Get-TenableWASScanConfigs is not available; skipping TenableWAS scan resolution.'
+        return @()
+    }
+
+    try {
+        $allScans = Get-TenableWASScanConfigs
+    } catch {
+        Write-Verbose "Failed to retrieve TenableWAS scan configurations: $($_)"
+        return @()
+    }
+
+    if (-not $allScans) {
+        Write-Verbose 'No TenableWAS scans were returned from the API.'
+        return @()
+    }
+
+    $requestedNames = @($Config.TenableWASScanNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($requestedNames.Count -eq 0) {
+        Write-Verbose 'All configured TenableWAS scan names were empty after trimming.'
+        return @()
+    }
+
+    $resolved = @($allScans | Where-Object { $_.Name -in $requestedNames })
+    if ($resolved.Count -lt $requestedNames.Count) {
+        $missing = $requestedNames | Where-Object { $_ -notin $resolved.Name }
+        if ($missing.Count -gt 0) {
+            Write-Warning ("TenableWAS scans not found: {0}" -f ($missing -join ', '))
+        }
+    }
+
+    return $resolved
 }
 
 #Save-Config -Config (Get-Config) -ConfigPath (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')

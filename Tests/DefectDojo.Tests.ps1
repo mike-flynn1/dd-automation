@@ -192,11 +192,10 @@ Describe 'Get-DefectDojoTestType' {
             Mock Get-Config { return @{ ApiBaseUrls = @{ DefectDojo = 'https://example.com/api' } } }
             $env:DOJO_API_KEY = 'dummy-key'
             Mock Invoke-RestMethod {
-                return @{ 
-                    results = @( 
-                        @{ id = 89; name = 'Tenable Scan' },
-                        @{ id = 123; name = 'SARIF' }
-                    ) 
+                return @{
+                    results = @(
+                        @{ id = 89; name = 'Tenable Scan' }
+                    )
                 }
             }
         }
@@ -240,3 +239,78 @@ Describe 'Get-DefectDojoTestType' {
         }
     }
 }
+
+Describe 'Get-EngagementIdForTool' {
+    BeforeAll {
+        $testLogDir = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        Initialize-Log -LogDirectory $testLogDir -LogFileName 'test.log' -Overwrite
+    }
+    
+    Context 'When tool-specific engagement is configured' {
+        It 'Returns tool-specific EngagementId for TenableWAS' {
+            $config = @{ DefectDojo = @{ EngagementId = 10; TenableWASEngagementId = 20 } }
+            Get-EngagementIdForTool -Config $config -Tool 'TenableWAS' | Should -Be 20
+        }
+        
+        It 'Returns tool-specific EngagementId for CodeQL' {
+            $config = @{ DefectDojo = @{ EngagementId = 10; CodeQLEngagementId = 30 } }
+            Get-EngagementIdForTool -Config $config -Tool 'CodeQL' | Should -Be 30
+        }
+        
+        It 'Returns tool-specific EngagementId for BurpSuite' {
+            $config = @{ DefectDojo = @{ EngagementId = 10; BurpSuiteEngagementId = 25 } }
+            Get-EngagementIdForTool -Config $config -Tool 'BurpSuite' | Should -Be 25
+        }
+    }
+    
+    Context 'When tool-specific engagement is not set' {
+        It 'Falls back to default EngagementId' {
+            $config = @{ DefectDojo = @{ EngagementId = 10 } }
+            Get-EngagementIdForTool -Config $config -Tool 'TenableWAS' | Should -Be 10
+        }
+    }
+    
+    Context 'When tool-specific engagement is 0 or empty' {
+        It 'Falls back to default when value is 0' {
+            $config = @{ DefectDojo = @{ EngagementId = 10; TenableWASEngagementId = 0 } }
+            Get-EngagementIdForTool -Config $config -Tool 'TenableWAS' | Should -Be 10
+        }
+        
+        It 'Falls back to default when value is empty string' {
+            $config = @{ DefectDojo = @{ EngagementId = 10; CodeQLEngagementId = '' } }
+            Get-EngagementIdForTool -Config $config -Tool 'CodeQL' | Should -Be 10
+        }
+    }
+    
+    Context 'When multiple tools have different engagements' {
+        It 'Returns correct engagement for each tool' {
+            $config = @{
+                DefectDojo = @{
+                    EngagementId = 10
+                    TenableWASEngagementId = 20
+                    BurpSuiteEngagementId = 25
+                    CodeQLEngagementId = 30
+                    SecretScanEngagementId = 40
+                    DependabotEngagementId = 50
+                }
+            }
+            Get-EngagementIdForTool -Config $config -Tool 'TenableWAS' | Should -Be 20
+            Get-EngagementIdForTool -Config $config -Tool 'BurpSuite' | Should -Be 25
+            Get-EngagementIdForTool -Config $config -Tool 'CodeQL' | Should -Be 30
+            Get-EngagementIdForTool -Config $config -Tool 'SecretScan' | Should -Be 40
+            Get-EngagementIdForTool -Config $config -Tool 'Dependabot' | Should -Be 50
+        }
+        
+        It 'Falls back to default for unconfigured tools' {
+            $config = @{
+                DefectDojo = @{
+                    EngagementId = 10
+                    TenableWASEngagementId = 20
+                }
+            }
+            Get-EngagementIdForTool -Config $config -Tool 'BurpSuite' | Should -Be 10
+        }
+    }
+}
+
+

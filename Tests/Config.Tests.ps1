@@ -118,4 +118,164 @@ Describe 'Save-Config' {
             $savedContent | Should -Not -Match "TenableWASScanNames"
         }
     }
+
+    Context 'When saving Notifications configuration' {
+        It 'Saves WebhookUrl when provided' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                Paths = @{ BurpSuiteXmlFolder = 'C:\temp' }
+                Notifications = @{
+                    WebhookUrl = 'https://hooks.slack.com/services/TEST123'
+                }
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Match "Notifications = @\{"
+            $savedContent | Should -Match "WebhookUrl = 'https://hooks.slack.com/services/TEST123'"
+        }
+
+        It 'Comments out empty WebhookUrl' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                Paths = @{ BurpSuiteXmlFolder = 'C:\temp' }
+                Notifications = @{
+                    WebhookUrl = ''
+                }
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Match "Notifications = @\{"
+            $savedContent | Should -Match "# WebhookUrl = ''"
+        }
+
+        It 'Does not include Notifications section when not present in config' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                Paths = @{ BurpSuiteXmlFolder = 'C:\temp' }
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Not -Match "Notifications"
+        }
+
+        It 'Preserves webhook URL across save/load cycle' {
+            $originalConfig = @{
+                Tools = @{ 
+                    TenableWAS = $true 
+                    SonarQube = $false
+                    BurpSuite = $false
+                    DefectDojo = $false
+                    GitHub = @{ CodeQL = $false; SecretScanning = $false; Dependabot = $false }
+                }
+                ApiBaseUrls = @{ 
+                    TenableWAS = 'https://example.com'
+                    SonarQube = 'https://sonar.example.com'
+                    BurpSuite = 'https://burp.example.com'
+                    DefectDojo = 'https://dd.example.com'
+                    GitHub = 'https://api.github.com'
+                }
+                Paths = @{ BurpSuiteXmlFolder = 'C:\temp' }
+                DefectDojo = @{ ProductId = 1 }
+                GitHub = @{ Orgs = @('TestOrg') }
+                Notifications = @{
+                    WebhookUrl = 'https://hooks.slack.com/services/PRESERVED'
+                }
+            }
+
+            Save-Config -Config $originalConfig -ConfigPath $script:tempConfigPath
+            $loadedConfig = Get-Config -ConfigPath $script:tempConfigPath -TemplatePath ''
+
+            $loadedConfig.Notifications | Should -Not -BeNullOrEmpty
+            $loadedConfig.Notifications.WebhookUrl | Should -Be 'https://hooks.slack.com/services/PRESERVED'
+        }
+
+        It 'Handles special characters in webhook URL' {
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                Paths = @{ BurpSuiteXmlFolder = 'C:\temp' }
+                Notifications = @{
+                    WebhookUrl = "https://example.com/webhook?token=abc'def&key=123"
+                }
+            }
+
+            Save-Config -Config $config -ConfigPath $script:tempConfigPath
+
+            $script:tempConfigPath | Should -Exist
+            $savedContent = Get-Content $script:tempConfigPath -Raw
+            $savedContent | Should -Match "WebhookUrl = 'https://example.com/webhook\?token=abc''def&key=123'"
+        }
+    }
+}
+
+Describe 'Resolve-TenableWASScans' {
+    It 'Resolves matching scan names' {
+        # Arrange
+        $config = @{
+            TenableWASScanNames = @('Scan A','Scan C')
+        }
+
+        Set-Item -Path function:Get-TenableWASScanConfigs -Value {
+            return @(
+                [pscustomobject]@{ Name = 'Scan A'; Id = 'id-a' },
+                [pscustomobject]@{ Name = 'Scan B'; Id = 'id-b' },
+                [pscustomobject]@{ Name = 'Scan C'; Id = 'id-c' }
+            )
+        }
+
+        try {
+            # Act
+            $result = Resolve-TenableWASScans -Config $config
+
+            # Assert
+            $result.Count | Should -Be 2
+            ($result | Where-Object Name -eq 'Scan A').Id | Should -Be 'id-a'
+            ($result | Where-Object Name -eq 'Scan C').Id | Should -Be 'id-c'
+        } finally {
+            # Clean up
+            Remove-Item -Path function:Get-TenableWASScanConfigs -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'Returns empty for null scan names' {
+        $config = @{ TenableWASScanNames = $null }
+        $result = Resolve-TenableWASScans -Config $config
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'Returns empty when no matching scans found' {
+        # Arrange
+        $config = @{
+            TenableWASScanNames = @('NonexistentScan')
+        }
+
+        Set-Item -Path function:Get-TenableWASScanConfigs -Value {
+            return @(
+                [pscustomobject]@{ Name = 'Scan A'; Id = 'id-a' }
+            )
+        }
+
+        try {
+            # Act
+            $result = Resolve-TenableWASScans -Config $config
+
+            # Assert
+            $result | Should -BeNullOrEmpty
+        } finally {
+            # Clean up
+            Remove-Item -Path function:Get-TenableWASScanConfigs -ErrorAction SilentlyContinue
+        }
+    }
 }

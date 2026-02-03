@@ -281,6 +281,121 @@ function New-DefectDojoTest {
     }
 }
 
+function Get-EngagementIdForTool {
+    <#
+    .SYNOPSIS
+        Returns the appropriate EngagementId for a given tool, with fallback to default.
+    .DESCRIPTION
+        Checks for a tool-specific engagement ID override in the config. If not found
+        or if the value is 0/empty, falls back to the default EngagementId.
+        This enables CLI/config-based automation to route different tools to different
+        engagements (e.g., separate SAST and DAST engagements).
+    .PARAMETER Config
+        Configuration hashtable containing DefectDojo settings.
+    .PARAMETER Tool
+        Tool name: TenableWAS, BurpSuite, CodeQL, SecretScan, Dependabot
+    .OUTPUTS
+        Integer engagement ID.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('TenableWAS', 'BurpSuite', 'CodeQL', 'SecretScan', 'Dependabot')]
+        [string]$Tool
+    )
+    
+    $toolEngagementKey = "${Tool}EngagementId"
+    
+    # Check for tool-specific override (must exist and be non-zero)
+    if ($Config.DefectDojo.ContainsKey($toolEngagementKey) -and $Config.DefectDojo[$toolEngagementKey]) {
+        Write-Log -Message "Using tool-specific engagement ID for ${Tool}: $($Config.DefectDojo[$toolEngagementKey])" -Level 'INFO'
+        return $Config.DefectDojo[$toolEngagementKey]
+    }
+    
+    # Fall back to default EngagementId
+    return $Config.DefectDojo.EngagementId
+}
+
+function Resolve-DefectDojoTest {
+    <#
+    .SYNOPSIS
+        Resolves or creates a DefectDojo test by name within an engagement.
+    .DESCRIPTION
+        Searches for an existing test by name (with optional alternate names) within
+        the specified engagement. If not found, creates a new test. Returns the test ID
+        and tracks the updated test list for subsequent calls.
+    .PARAMETER EngagementId
+        The DefectDojo engagement ID to search/create tests within.
+    .PARAMETER TestName
+        The primary name for the test (used for creation if not found).
+    .PARAMETER TestTypeName
+        The DefectDojo test type name (e.g., 'SARIF', 'Burp Scan', 'Tenable Scan').
+    .PARAMETER ExistingTests
+        Array of existing tests to search (avoids repeated API calls in loops).
+    .PARAMETER AlternateNames
+        Optional array of alternate names to match against existing tests.
+    .OUTPUTS
+        PSCustomObject with TestId, WasCreated, and UpdatedTests properties.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [int]$EngagementId,
+        
+        [Parameter(Mandatory)]
+        [string]$TestName,
+        
+        [Parameter(Mandatory)]
+        [string]$TestTypeName,
+        
+        [Parameter()]
+        [array]$ExistingTests = @(),
+        
+        [Parameter()]
+        [string[]]$AlternateNames = @()
+    )
+    
+    # Build the list of names to match against (primary + alternates)
+    $namesToMatch = @($TestName) + $AlternateNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    
+    # Search for existing test
+    $existingTest = $ExistingTests | Where-Object {
+        $_.Title -in $namesToMatch -or $_.title -in $namesToMatch
+    } | Select-Object -First 1
+    
+    if ($existingTest) {
+        $testTitle = if ($existingTest.Title) { $existingTest.Title } else { $existingTest.title }
+        $testId = if ($existingTest.Id) { $existingTest.Id } else { $existingTest.id }
+        Write-Log -Message "Using existing DefectDojo test: $testTitle (ID: $testId)"
+        return [PSCustomObject]@{
+            TestId = $testId
+            WasCreated = $false
+            UpdatedTests = $ExistingTests
+        }
+    }
+    
+    # Test not found - create new one
+    Write-Log -Message "Creating new DefectDojo test: $TestName"
+    
+    $testTypeId = Get-DefectDojoTestType -TestTypeName $TestTypeName
+    $newTest = New-DefectDojoTest -EngagementId $EngagementId -TestName $TestName -TestType $testTypeId
+    
+    $newTestId = if ($newTest.Id) { $newTest.Id } else { $newTest.id }
+    Write-Log -Message "Test created successfully: $TestName (ID: $newTestId)"
+    
+    # Return updated tests array with new test appended
+    $updatedTests = @($ExistingTests) + @($newTest)
+    
+    return [PSCustomObject]@{
+        TestId = $newTestId
+        WasCreated = $true
+        UpdatedTests = $updatedTests
+    }
+}
+
 #DEBUG
 # Get-DefectDojoProducts | ForEach-Object {
 #     Write-Log -Message "Product: $($_.Name) (Id: $($_.Id))" -Level 'INFO'

@@ -31,16 +31,40 @@
         'Scan 1'
     )
     
-    # DefectDojo selection identifiers (optional)
+    # DefectDojo selection identifiers
     DefectDojo = @{
         ProductId         = 0  # Enter the DefectDojo product Id
-        EngagementId      = 0  # Enter the DefectDojo engagement Id
-        SonarQubeTestId   = 0  # Enter the DefectDojo test Id for SonarQube
-        BurpSuiteTestId   = 0  # Enter the DefectDojo test Id for BurpSuite
-        GitHubDependabotTestId = 0  # Enter the DefectDojo test Id for GitHub Dependabot alerts
-        MinimumSeverity   = 'Low'  # Enter the minimum severity to upload
+        EngagementId      = 0  # Default engagement for all scan types
+        
+        # Optional: Per-tool engagement overrides (CLI/config-only feature)
+        # If not specified, each tool uses the default EngagementId above
+        # TenableWASEngagementId  = 0  # Separate engagement for TenableWAS DAST scans
+        # BurpSuiteEngagementId   = 0  # Separate engagement for BurpSuite DAST scans
+        # CodeQLEngagementId      = 0  # Separate engagement for GitHub CodeQL SAST scans
+        # SecretScanEngagementId  = 0  # Separate engagement for GitHub Secret Scanning
+        # DependabotEngagementId  = 0  # Separate engagement for GitHub Dependabot SCA scans
+        
+        # Pre-configured test IDs (used by GUI, optional for CLI)
+        # If set, takes precedence; if 0/omitted, auto-creates test under engagement
+        SonarQubeTestId        = 0  # Required for SonarQube (no auto-create)
+        BurpSuiteTestId        = 0  # If 0, auto-creates "BurpSuite Scan" test
+        GitHubDependabotTestId = 0  # If 0, auto-creates "GitHub Dependabot" test
+        
+        MinimumSeverity   = 'Low'
         APIScanConfigId = 1
         CloseOldFindings  = $false  # When $true, old findings will be closed on reimport
+        
+        # Tags to apply to all scan uploads (optional)
+        Tags = @(
+            # 'automated-scan'
+            # 'dd-automation'
+        )
+        
+        # Optional: Apply tags to findings (default: $false)
+        ApplyTagsToFindings = $false
+        
+        # Optional: Apply tags to endpoints (default: $false)
+        ApplyTagsToEndpoints = $false
     }
 
     # GitHub Organizations to process (one or many)
@@ -73,4 +97,11 @@
         )
     }
 
+    # Webhook Notifications (Optional)
+    Notifications = @{
+        # WebhookUrl = 'https://your-webhook-url-here'
+        # WebhookType = 'PowerAutomate'  # Options: 'PowerAutomate' (default), 'Teams'
+    }
+
 }
+
