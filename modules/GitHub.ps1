@@ -196,7 +196,7 @@ function Get-GitHubRepos {
     .PARAMETER Owners
         GitHub organization names. Uses config.GitHub.Orgs if not provided.
     .PARAMETER Limit
-        Maximum number of repositories per page.
+        Maximum number of repositories to retrieve. Set to 0 for unlimited (default).
     .OUTPUTS
         Array of repository objects.
     #>
@@ -205,7 +205,7 @@ function Get-GitHubRepos {
         [Parameter(Mandatory=$false)]
         [string[]]$Owners,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 200
+        [int]$Limit = 0
     )
 
     $context    = Get-GitHubContext -Owners $Owners
@@ -328,14 +328,14 @@ function GitHub-CodeQLDownload {
     .PARAMETER Owners
         GitHub organization names. Uses config.GitHub.Orgs if not provided.
     .PARAMETER Limit
-        Maximum repos and analyses per page.
+        Maximum number of repositories to process. Set to 0 for unlimited (default).
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$false)]
         [string[]]$Owners,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 200
+        [int]$Limit = 0
     )
 
     $context = Get-GitHubContext -Owners $Owners
@@ -402,14 +402,14 @@ function GitHub-SecretScanDownload {
     .PARAMETER Owners
         GitHub organization names. Uses config.GitHub.Orgs if not provided.
     .PARAMETER Limit
-        Maximum repos and analyses per page.
+        Maximum number of repositories to process. Set to 0 for unlimited (default).
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$false)]
         [string[]]$Owners,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 100
+        [int]$Limit = 0
     )
 
     $context = Get-GitHubContext -Owners $Owners
@@ -458,7 +458,7 @@ function GitHub-DependabotDownload {
     .PARAMETER Owners
         Optional override list of org names; defaults to GitHub.Orgs from config when not supplied.
     .PARAMETER Limit
-        Maximum number of repositories to process; also used as the per_page value when requesting Dependabot alerts (GitHub caps this at 100 items per page).
+        Maximum number of repositories to process. Set to 0 for unlimited (default). Note: per_page for API calls is capped at 100.
     .OUTPUTS
         string containing full paths to the JSON files saved under %TEMP%\GitHubDependabot. Returns an empty array when no alerts are found for any repository.
     #>
@@ -467,7 +467,7 @@ function GitHub-DependabotDownload {
         [Parameter(Mandatory=$false)]
         [string[]]$Owners,
         [Parameter(Mandatory=$false)]
-        [int]$Limit = 100
+        [int]$Limit = 0
     )
 
     $context = Get-GitHubContext -Owners $Owners
