@@ -6,7 +6,9 @@
     This script is a refactored version of Launch.ps1, organized with clearer functions and PowerShell best practices.
 #>
 
-Param()
+Param(
+    [string]$ConfigPath
+)
 
 #region Setup and Validation
 
@@ -48,6 +50,18 @@ $scriptDir = $PSScriptRoot
 # Initialize logging
 Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomation_GUI.log' -MaxLogFiles 3
 Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
+
+if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+    if (-not (Test-Path -Path $ConfigPath -PathType Leaf)) {
+        Write-Log -Message "Config file not found at $ConfigPath" -Level 'ERROR'
+        Write-Host "Config file not found at $ConfigPath"
+        exit 1
+    }
+
+    $resolvedConfigPath = (Resolve-Path -Path $ConfigPath).Path
+    Set-ActiveConfigPath -Path $resolvedConfigPath
+    Write-Log -Message "Using config path provided on command line: $resolvedConfigPath" -Level 'INFO'
+}
 
 $script:gitHubFeatureMap = [ordered]@{
     GitHubCodeQL         = 'CodeQL'
