@@ -203,8 +203,17 @@ function Save-Config {
         [Parameter(Mandatory=$true)]
         [hashtable]$Config,
 
-        [string]$ConfigPath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')
+        [string]$ConfigPath
     )
+
+    if (-not $ConfigPath) {
+        if ($global:DDAutomation_ActiveConfigPath) {
+            $ConfigPath = $global:DDAutomation_ActiveConfigPath
+        }
+        else {
+            $ConfigPath = (Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'config\config.psd1')
+        }
+    }
 
     Normalize-GitHubConfig -Config $Config
 
