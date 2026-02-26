@@ -30,11 +30,59 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
     exit
 }
 
-# Define script root and load modules.
+# Define script root and load core logging first.
 # Dot-sourcing is used here because `using module` does not support dynamic paths (e.g., with $PSScriptRoot),
 # which is necessary for this script to be portable.
 $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'modules\Logging.ps1')
+
+# Initialize logging before any GUI initialization
+Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomation_GUI.log' -MaxLogFiles 3
+Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
+
+$script:gitHubFeatureMap = [ordered]@{
+    GitHubCodeQL         = 'CodeQL'
+    GitHubSecretScanning = 'SecretScanning'
+    GitHubDependabot     = 'Dependabot'
+}
+
+function Initialize-WpfRuntime {
+    # Configure DPI awareness BEFORE loading WPF assemblies.
+    $script:DpiAwarenessConfigured = $false
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ProcessDpiAwareness {
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool SetProcessDPIAware();
+
+    public static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (IntPtr)(-4);
+}
+'@
+
+        if ([ProcessDpiAwareness]::SetProcessDpiAwarenessContext([ProcessDpiAwareness]::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+            $script:DpiAwarenessConfigured = $true
+        } elseif ([ProcessDpiAwareness]::SetProcessDPIAware()) {
+            $script:DpiAwarenessConfigured = $true
+        }
+    } catch {
+        Write-Log -Message "DPI awareness configuration warning: $_" -Level 'WARNING'
+    }
+
+    Add-Type -AssemblyName PresentationFramework
+    Add-Type -AssemblyName PresentationCore
+    Add-Type -AssemblyName WindowsBase
+    Add-Type -AssemblyName System.Xaml
+    Add-Type -AssemblyName System.Windows.Forms
+}
+
+Initialize-WpfRuntime
+
+# Load remaining modules after DPI/WinForms initialization.
 . (Join-Path $scriptDir 'modules\Config.ps1')
 . (Join-Path $scriptDir 'modules\GitHub.ps1')
 . (Join-Path $scriptDir 'modules\TenableWAS.ps1')
@@ -45,25 +93,11 @@ $scriptDir = $PSScriptRoot
 . (Join-Path $scriptDir 'Uploader.ps1')
 . (Join-Path $scriptDir 'AutomationWorkflows.ps1')
 
-# Initialize logging
-Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomation_GUI.log' -MaxLogFiles 3
-Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
-
-$script:gitHubFeatureMap = [ordered]@{
-    GitHubCodeQL         = 'CodeQL'
-    GitHubSecretScanning = 'SecretScanning'
-    GitHubDependabot     = 'Dependabot'
-}
-
-# Add Windows Forms types for GUI
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
 # Validate environment dependencies before launching GUI
 try {
     Validate-Environment
 } catch {
-    [System.Windows.Forms.MessageBox]::Show("Environment validation failed: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+    [System.Windows.MessageBox]::Show("Environment validation failed: $_", 'Error', 'OK', 'Error') | Out-Null
     exit 1
 }
 
@@ -81,7 +115,7 @@ function Write-GuiMessage {
     $timestamp = (Get-Date -Format 'HH:mm:ss')
     $script:lstStatus.Items.Add("$timestamp [$Level] $Message") | Out-Null
     # Auto-scroll to the latest message
-    $script:lstStatus.TopIndex = $script:lstStatus.Items.Count - 1
+    $script:lstStatus.ScrollIntoView($script:lstStatus.Items[$script:lstStatus.Items.Count - 1])
 }
 
 function Get-GitHubFeatureState {
@@ -126,183 +160,251 @@ function Set-GitHubFeatureState {
 #region GUI Creation
 
 function Initialize-GuiElements {
-    # Script-level scope allows these variables to be accessed by event handlers
-    $script:form = New-Object System.Windows.Forms.Form
     $script:chkBoxes = @{}
     $script:gitHubToolKeys = [string[]]$script:gitHubFeatureMap.Keys
     $script:tools = @('TenableWAS','SonarQube','BurpSuite','DefectDojo') + $script:gitHubToolKeys
 
-    # Form settings
-    $form.Text = 'DD Automation Launcher'
-    $form.StartPosition = 'CenterScreen'
-    $form.Size = New-Object System.Drawing.Size(640, 975)
-    $form.FormBorderStyle = 'FixedDialog'
-    $form.MaximizeBox = $false
+    $screenWidth = [System.Windows.SystemParameters]::PrimaryScreenWidth
+    $screenHeight = [System.Windows.SystemParameters]::PrimaryScreenHeight
+    $windowWidth = [Math]::Max(720, [Math]::Min([int]($screenWidth * 0.6), [int]($screenWidth - 80)))
+    $windowHeight = [Math]::Max(760, [Math]::Min([int]($screenHeight * 0.8), [int]($screenHeight - 80)))
 
-    # Tools GroupBox
-    $grpTools = New-Object System.Windows.Forms.GroupBox
-    $grpTools.Text = 'Select Tools'
-    $grpTools.Size = New-Object System.Drawing.Size(600, 130)
-    $grpTools.Location = New-Object System.Drawing.Point(10, 10)
-    $form.Controls.Add($grpTools)
+    $script:form = New-Object System.Windows.Window
+    $script:form.Title = 'DD Automation Launcher'
+    $script:form.Width = $windowWidth
+    $script:form.Height = $windowHeight
+    $script:form.MinWidth = 640
+    $script:form.MinHeight = 720
+    $script:form.WindowStartupLocation = 'CenterScreen'
+    $script:form.SizeToContent = 'Manual'
 
-    # Create tooltip for checkboxes
-    $script:toolTip = New-Object System.Windows.Forms.ToolTip
-    $script:toolTip.ShowAlways = $true
+    $rootGrid = New-Object System.Windows.Controls.Grid
+    $rootGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = '*' }))
+    $rootGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = 'Auto' }))
 
-    # Tool Checkboxes (uniform spacing even with longer labels)
-    $columnCount = 3
-    $columnWidth = 180
-    for ($i = 0; $i -lt $tools.Count; $i++) {
-        $name = $tools[$i]
-        $chk = New-Object System.Windows.Forms.CheckBox
-        $chk.Text = $name
-        $chk.AutoSize = $true
-        $x = 10 + ($i % $columnCount) * $columnWidth
-        $y = 20 + [Math]::Floor($i / $columnCount) * 30
-        $chk.Location = New-Object System.Drawing.Point($x, $y)
-        $chk.Checked = $true
-        $grpTools.Controls.Add($chk)
-        $chkBoxes[$name] = $chk
-        
-        # Add tooltips for each checkbox
+    $scrollViewer = New-Object System.Windows.Controls.ScrollViewer
+    $scrollViewer.VerticalScrollBarVisibility = 'Auto'
+    $scrollViewer.HorizontalScrollBarVisibility = 'Auto'
+    [System.Windows.Controls.Grid]::SetRow($scrollViewer, 0)
+
+    $contentStack = New-Object System.Windows.Controls.StackPanel
+    $contentStack.Orientation = 'Vertical'
+    $contentStack.Margin = '10'
+    $scrollViewer.Content = $contentStack
+
+    $toolsGroup = New-Object System.Windows.Controls.GroupBox
+    $toolsGroup.Header = 'Select Tools'
+    $toolsGroup.Margin = '0,0,0,10'
+
+    $toolsWrap = New-Object System.Windows.Controls.WrapPanel
+    $toolsWrap.Margin = '10'
+    $toolsWrap.ItemWidth = 180
+    $toolsGroup.Content = $toolsWrap
+
+    $script:toolTip = New-Object System.Windows.Controls.ToolTip
+
+    foreach ($name in $script:tools) {
+        $chk = New-Object System.Windows.Controls.CheckBox
+        $chk.Content = $name
+        $chk.IsChecked = $true
+        $chk.Margin = '0,0,10,6'
         switch ($name) {
-            'TenableWAS' { $script:toolTip.SetToolTip($chk, "Downloads selected Tenable WAS scans and uploads to DefectDojo. Each scan creates/updates its own test.") }
-            'SonarQube' { $script:toolTip.SetToolTip($chk, "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo") }
-            'BurpSuite' { $script:toolTip.SetToolTip($chk, "Scans the specified folder for BurpSuite XML reports and uploads them to DefectDojo.") }
-            'DefectDojo' { $script:toolTip.SetToolTip($chk, "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload.") }
-            'GitHubCodeQL' {
-                $chk.Text = 'GitHub CodeQL'
-                $script:toolTip.SetToolTip($chk, "Download and process GitHub CodeQL SARIF reports, optionally upload to DefectDojo.")
-            }
-            'GitHubSecretScanning' {
-                $chk.Text = 'GitHub Secret Scanning'
-                $script:toolTip.SetToolTip($chk, "Download GitHub Secret Scanning JSON alerts, optionally upload to DefectDojo.")
-            }
-            'GitHubDependabot' {
-                $chk.Text = 'GitHub Dependabot'
-                $script:toolTip.SetToolTip($chk, "Download GitHub Dependabot alerts JSON and upload to DefectDojo when configured.")
-            }
+            'TenableWAS' { $chk.ToolTip = "Downloads selected Tenable WAS scans and uploads to DefectDojo. Each scan creates/updates its own test." }
+            'SonarQube' { $chk.ToolTip = "This checkbox uses the built-in SonarQube DefectDojo functionality (IF SET UP - see wiki if not), to process SonarQube into DefectDojo" }
+            'BurpSuite' { $chk.ToolTip = "Scans the specified folder for BurpSuite XML reports and uploads them to DefectDojo." }
+            'DefectDojo' { $chk.ToolTip = "This checkbox uploads all other tools to DefectDojo. If unchecked, other tool will execute but not upload." }
+            'GitHubCodeQL' { $chk.Content = 'GitHub CodeQL'; $chk.ToolTip = "Download and process GitHub CodeQL SARIF reports, optionally upload to DefectDojo." }
+            'GitHubSecretScanning' { $chk.Content = 'GitHub Secret Scanning'; $chk.ToolTip = "Download GitHub Secret Scanning JSON alerts, optionally upload to DefectDojo." }
+            'GitHubDependabot' { $chk.Content = 'GitHub Dependabot'; $chk.ToolTip = "Download GitHub Dependabot alerts JSON and upload to DefectDojo when configured." }
         }
+        $toolsWrap.Children.Add($chk) | Out-Null
+        $script:chkBoxes[$name] = $chk
     }
 
-    # BurpSuite Controls
-    $lblBurp = New-Object System.Windows.Forms.Label -Property @{ Text = 'BurpSuite XML Folder:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 150) }
-    $script:txtBurp = New-Object System.Windows.Forms.TextBox -Property @{ Size = New-Object System.Drawing.Size(370, 20); Location = New-Object System.Drawing.Point(150, 148) }
-    $script:btnBrowse = New-Object System.Windows.Forms.Button -Property @{ Text = 'Browse...'; Location = New-Object System.Drawing.Point(540, 145); Size = New-Object System.Drawing.Size(80, 24) }
-    $form.Controls.AddRange(@($lblBurp, $txtBurp, $btnBrowse))
+    $contentStack.Children.Add($toolsGroup) | Out-Null
 
-    # TenableWAS Controls
-    $lblTenable = New-Object System.Windows.Forms.Label -Property @{ Text = 'TenableWAS Scans:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 180) }
-    $script:txtTenableSearch = New-Object System.Windows.Forms.TextBox -Property @{ 
-        Size = New-Object System.Drawing.Size(330, 20); 
-        Location = New-Object System.Drawing.Point(150, 180)
-        PlaceholderText = "Search scans by name..."
-    }
-    $script:lstTenableScans = New-Object System.Windows.Forms.CheckedListBox -Property @{ 
-        Size = New-Object System.Drawing.Size(330, 70); 
-        Location = New-Object System.Drawing.Point(150, 205); 
-        CheckOnClick = $true 
-    }
-    $script:btnRefreshTenable = New-Object System.Windows.Forms.Button -Property @{ Text = 'Refresh'; Location = New-Object System.Drawing.Point(490, 205); Size = New-Object System.Drawing.Size(60, 25) }
-    $form.Controls.AddRange(@($lblTenable, $script:txtTenableSearch, $script:lstTenableScans, $script:btnRefreshTenable))
+    $formGrid = New-Object System.Windows.Controls.Grid
+    $formGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = 'Auto' }))
+    $formGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = '*' }))
+    $formGrid.Margin = '0,0,0,10'
 
-    # GitHub organization controls
-    $lblGitHubOrgs = New-Object System.Windows.Forms.Label -Property @{ Text = 'GitHub Orgs:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 300) }
-    $script:txtGitHubOrgs = New-Object System.Windows.Forms.TextBox -Property @{
-        Location = New-Object System.Drawing.Point(150, 298)
-        Size     = New-Object System.Drawing.Size(330, 20)
-        Enabled  = $true
-    }
-    $form.Controls.AddRange(@($lblGitHubOrgs, $script:txtGitHubOrgs))
-    $script:toolTip.SetToolTip($script:txtGitHubOrgs, 'Enter one or more GitHub organizations, separated by commas.')
+    $script:formRowIndex = 0
+    function Add-FormRow {
+        param(
+            [string]$Label,
+            [System.Windows.UIElement]$Control
+        )
 
-    # DefectDojo Controls
-    $ddControls = @{
-        lblDDProduct            = [Tuple]::Create('DefectDojo Product:', 330)
-        lblDDEng                = [Tuple]::Create('Engagement:', 360)
-        lblDDApiScan            = [Tuple]::Create('API Scan Config:', 390)
-        lblDDTestSonar          = [Tuple]::Create('SonarQube Test:', 420)
-        lblDDTestBurp           = [Tuple]::Create('BurpSuite Test:', 450)
-        lblDDTestDependabot     = [Tuple]::Create('Dependabot Test:', 480)
-        lblDDSeverity           = [Tuple]::Create('Minimum Severity:', 510)
+        $formGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = 'Auto' }))
+        $lbl = New-Object System.Windows.Controls.TextBlock
+        $lbl.Text = $Label
+        $lbl.Margin = '0,6,10,6'
+        [System.Windows.Controls.Grid]::SetRow($lbl, $script:formRowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($lbl, 0)
+        $formGrid.Children.Add($lbl) | Out-Null
+
+        $Control.Margin = '0,4,0,4'
+        [System.Windows.Controls.Grid]::SetRow($Control, $script:formRowIndex)
+        [System.Windows.Controls.Grid]::SetColumn($Control, 1)
+        $formGrid.Children.Add($Control) | Out-Null
+        $script:formRowIndex++
     }
 
-    foreach ($name in $ddControls.Keys) {
-        $label = New-Object System.Windows.Forms.Label -Property @{ Text = $ddControls[$name].Item1; AutoSize = $true; Location = New-Object System.Drawing.Point(10, $ddControls[$name].Item2) }
-        $comboName = $name.Replace('lblDD','cmbDD')
-        $combobox = New-Object System.Windows.Forms.ComboBox -Property @{ DropDownStyle = 'DropDownList'; Location = New-Object System.Drawing.Point(150, ($ddControls[$name].Item2 - 2)); Size = New-Object System.Drawing.Size(220, 20); Enabled = $false }
-        $form.Controls.AddRange(@($label, $combobox))
-        Set-Variable -Name $comboName -Scope Script -Value $combobox
-    }
-    $script:cmbDDSeverity.Items.AddRange(@('Info','Low','Medium','High','Critical'))
+    $script:txtBurp = New-Object System.Windows.Controls.TextBox
+    $script:txtBurp.MinWidth = 240
+    $script:btnBrowse = New-Object System.Windows.Controls.Button
+    $script:btnBrowse.Content = 'Browse...'
+    $script:btnBrowse.Margin = '10,0,0,0'
+    $burpPanel = New-Object System.Windows.Controls.DockPanel
+    $burpPanel.LastChildFill = $true
+    [System.Windows.Controls.DockPanel]::SetDock($script:btnBrowse, 'Right')
+    $burpPanel.Children.Add($script:btnBrowse) | Out-Null
+    $burpPanel.Children.Add($script:txtBurp) | Out-Null
+    Add-FormRow -Label 'BurpSuite XML Folder:' -Control $burpPanel
 
-    # Close Old Findings on Reimport Checkbox
-    $lblDDCloseFindings = New-Object System.Windows.Forms.Label -Property @{ Text = 'Close Old Findings:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 540) }
-    $script:chkDDCloseFindings = New-Object System.Windows.Forms.CheckBox -Property @{ AutoSize = $true; Location = New-Object System.Drawing.Point(150, 542); Checked = $false; Enabled = $false }
-    $form.Controls.AddRange(@($lblDDCloseFindings, $script:chkDDCloseFindings))
-    $script:toolTip.SetToolTip($script:chkDDCloseFindings, 'When checked, old findings will be closed on reimport. When unchecked, previous findings are preserved.')
+    $tenablePanel = New-Object System.Windows.Controls.StackPanel
+    $tenablePanel.Orientation = 'Vertical'
+    $script:txtTenableSearch = New-Object System.Windows.Controls.TextBox
+    $script:txtTenableSearch.MinWidth = 240
+    $script:txtTenableSearch.Margin = '0,0,0,6'
+    $script:txtTenableSearch.ToolTip = 'Search scans by name...'
 
-    # Tags TextBox and Label
-    $lblTags = New-Object System.Windows.Forms.Label -Property @{ Text = 'Tags:'; AutoSize = $true; Location = New-Object System.Drawing.Point(10, 570) }
-    $script:txtTags = New-Object System.Windows.Forms.TextBox -Property @{ Location = New-Object System.Drawing.Point(150, 568); Size = New-Object System.Drawing.Size(300, 20); Enabled = $false }
-    $form.Controls.AddRange(@($lblTags, $script:txtTags))
-    $script:toolTip.SetToolTip($script:txtTags, 'Enter tags to apply to all scan uploads (e.g., automated-scan, dd-automation). Separate multiple tags with commas.')
+    $tenableListPanel = New-Object System.Windows.Controls.DockPanel
+    $script:btnRefreshTenable = New-Object System.Windows.Controls.Button
+    $script:btnRefreshTenable.Content = 'Refresh'
+    $script:btnRefreshTenable.Margin = '10,0,0,0'
+    $script:btnRefreshTenable.Width = 80
 
-    # Apply Tags to Findings Checkbox
-    $script:chkApplyTagsToFindings = New-Object System.Windows.Forms.CheckBox -Property @{ Text = 'Apply tags to findings'; AutoSize = $true; Location = New-Object System.Drawing.Point(150, 595); Checked = $false; Enabled = $false }
-    $form.Controls.Add($script:chkApplyTagsToFindings)
-    $script:toolTip.SetToolTip($script:chkApplyTagsToFindings, 'When checked, tags will be applied to individual findings as well as the test.')
+    $script:tenableScroll = New-Object System.Windows.Controls.ScrollViewer
+    $script:tenableScroll.Height = 140
+    $script:tenableScroll.VerticalScrollBarVisibility = 'Auto'
+    $script:tenableScroll.HorizontalScrollBarVisibility = 'Disabled'
+    $script:tenableScanPanel = New-Object System.Windows.Controls.StackPanel
+    $script:tenableScanPanel.Orientation = 'Vertical'
+    $script:tenableScanPanel.Margin = '2,2,2,2'
+    $script:tenableScroll.Content = $script:tenableScanPanel
 
-    # Apply Tags to Endpoints Checkbox
-    $script:chkApplyTagsToEndpoints = New-Object System.Windows.Forms.CheckBox -Property @{ Text = 'Apply tags to endpoints'; AutoSize = $true; Location = New-Object System.Drawing.Point(150, 620); Checked = $false; Enabled = $false }
-    $form.Controls.Add($script:chkApplyTagsToEndpoints)
-    $script:toolTip.SetToolTip($script:chkApplyTagsToEndpoints, 'When checked, tags will be applied to endpoints as well as the test.')
+    [System.Windows.Controls.DockPanel]::SetDock($script:btnRefreshTenable, 'Right')
+    $tenableListPanel.Children.Add($script:btnRefreshTenable) | Out-Null
+    $tenableListPanel.Children.Add($script:tenableScroll) | Out-Null
 
-    # Manual Upload (DefectDojo CLI) GroupBox
-    $grpManualTool = New-Object System.Windows.Forms.GroupBox
-    $grpManualTool.Text = 'Manual Upload (DefectDojo CLI)'
-    $grpManualTool.Size = New-Object System.Drawing.Size(580, 80)
-    $grpManualTool.Location = New-Object System.Drawing.Point(10, 650)
-    $form.Controls.Add($grpManualTool)
+    $tenablePanel.Children.Add($script:txtTenableSearch) | Out-Null
+    $tenablePanel.Children.Add($tenableListPanel) | Out-Null
+    Add-FormRow -Label 'TenableWAS Scans:' -Control $tenablePanel
 
-    # Launch DefectDojo CLI Button
-    $script:btnLaunchTool = New-Object System.Windows.Forms.Button
-    $script:btnLaunchTool.Text = 'Launch DefectDojo CLI'
-    $script:btnLaunchTool.Size = New-Object System.Drawing.Size(150, 30)
-    $script:btnLaunchTool.Location = New-Object System.Drawing.Point(10, 20)
-    $grpManualTool.Controls.Add($script:btnLaunchTool)
+    $script:txtGitHubOrgs = New-Object System.Windows.Controls.TextBox
+    $script:txtGitHubOrgs.ToolTip = 'Enter one or more GitHub organizations, separated by commas.'
+    Add-FormRow -Label 'GitHub Orgs:' -Control $script:txtGitHubOrgs
 
-    # Info label for Manual Upload
-    $lblManualInfo = New-Object System.Windows.Forms.Label
-    $lblManualInfo.Text = 'Opens defectdojo-cli.exe in a new console; no data is passed.'
-    $lblManualInfo.AutoSize = $true
-    $lblManualInfo.Location = New-Object System.Drawing.Point(170, 27)
-    $grpManualTool.Controls.Add($lblManualInfo)
+    $script:cmbDDProduct = New-Object System.Windows.Controls.ComboBox
+    $script:cmbDDEng = New-Object System.Windows.Controls.ComboBox
+    $script:cmbDDApiScan = New-Object System.Windows.Controls.ComboBox
+    $script:cmbDDTestSonar = New-Object System.Windows.Controls.ComboBox
+    $script:cmbDDTestBurp = New-Object System.Windows.Controls.ComboBox
+    $script:cmbDDTestDependabot = New-Object System.Windows.Controls.ComboBox
+    $script:cmbDDSeverity = New-Object System.Windows.Controls.ComboBox
 
-    # Add tooltip for Launch DefectDojo CLI button
-    $script:toolTip.SetToolTip($script:btnLaunchTool, "Runs modules\defectdojo-cli.exe in a separate window (stays open).")
-
-    # Status ListBox (moved down to accommodate new controls)
-    $script:lstStatus = New-Object System.Windows.Forms.ListBox -Property @{ Size = New-Object System.Drawing.Size(600, 130); Location = New-Object System.Drawing.Point(10, 740) }
-    $form.Controls.Add($lstStatus)
-
-    # Action Buttons
-    $script:btnLaunch = New-Object System.Windows.Forms.Button -Property @{ Text = 'GO'; Location = New-Object System.Drawing.Point(440, 900); Size = New-Object System.Drawing.Size(80, 30) }
-    $script:btnCancel = New-Object System.Windows.Forms.Button -Property @{ Text = 'Cancel'; Location = New-Object System.Drawing.Point(540, 900); Size = New-Object System.Drawing.Size(80, 30) }
-    
-    # Add completion message label
-    $script:lblComplete = New-Object System.Windows.Forms.Label -Property @{ 
-        Text = ""; 
-        Location = New-Object System.Drawing.Point(10, 910); 
-        Size = New-Object System.Drawing.Size(400, 25);
-        Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold);
-        ForeColor = [System.Drawing.Color]::Green;
-        Visible = $false
+    foreach ($combo in @($script:cmbDDProduct, $script:cmbDDEng, $script:cmbDDApiScan, $script:cmbDDTestSonar, $script:cmbDDTestBurp, $script:cmbDDTestDependabot, $script:cmbDDSeverity)) {
+        $combo.IsEnabled = $false
+        $combo.MinWidth = 220
     }
 
-    
-    $form.Controls.AddRange(@($btnLaunch, $btnCancel, $script:lblComplete))
+    Add-FormRow -Label 'DefectDojo Product:' -Control $script:cmbDDProduct
+    Add-FormRow -Label 'Engagement:' -Control $script:cmbDDEng
+    Add-FormRow -Label 'API Scan Config:' -Control $script:cmbDDApiScan
+    Add-FormRow -Label 'SonarQube Test:' -Control $script:cmbDDTestSonar
+    Add-FormRow -Label 'BurpSuite Test:' -Control $script:cmbDDTestBurp
+    Add-FormRow -Label 'Dependabot Test:' -Control $script:cmbDDTestDependabot
+    Add-FormRow -Label 'Minimum Severity:' -Control $script:cmbDDSeverity
+
+    $script:cmbDDSeverity.ItemsSource = @('Info','Low','Medium','High','Critical')
+
+    $script:chkDDCloseFindings = New-Object System.Windows.Controls.CheckBox
+    $script:chkDDCloseFindings.Content = 'Close Old Findings'
+    $script:chkDDCloseFindings.IsEnabled = $false
+    Add-FormRow -Label '' -Control $script:chkDDCloseFindings
+
+    $script:txtTags = New-Object System.Windows.Controls.TextBox
+    $script:txtTags.IsEnabled = $false
+    $script:txtTags.ToolTip = 'Enter tags to apply to all scan uploads (e.g., automated-scan, dd-automation). Separate multiple tags with commas.'
+    Add-FormRow -Label 'Tags:' -Control $script:txtTags
+
+    $script:chkApplyTagsToFindings = New-Object System.Windows.Controls.CheckBox
+    $script:chkApplyTagsToFindings.Content = 'Apply tags to findings'
+    $script:chkApplyTagsToFindings.IsEnabled = $false
+    Add-FormRow -Label '' -Control $script:chkApplyTagsToFindings
+
+    $script:chkApplyTagsToEndpoints = New-Object System.Windows.Controls.CheckBox
+    $script:chkApplyTagsToEndpoints.Content = 'Apply tags to endpoints'
+    $script:chkApplyTagsToEndpoints.IsEnabled = $false
+    Add-FormRow -Label '' -Control $script:chkApplyTagsToEndpoints
+
+    $contentStack.Children.Add($formGrid) | Out-Null
+
+    $manualGroup = New-Object System.Windows.Controls.GroupBox
+    $manualGroup.Header = 'Manual Upload (DefectDojo CLI)'
+    $manualGroup.Margin = '0,10,0,0'
+    $manualPanel = New-Object System.Windows.Controls.DockPanel
+    $manualPanel.Margin = '10'
+    $script:btnLaunchTool = New-Object System.Windows.Controls.Button
+    $script:btnLaunchTool.Content = 'Launch DefectDojo CLI'
+    $script:btnLaunchTool.Margin = '0,0,10,0'
+    $manualInfo = New-Object System.Windows.Controls.TextBlock
+    $manualInfo.Text = 'Opens defectdojo-cli.exe in a new console; no data is passed.'
+    $manualInfo.VerticalAlignment = 'Center'
+    [System.Windows.Controls.DockPanel]::SetDock($script:btnLaunchTool, 'Left')
+    $manualPanel.Children.Add($script:btnLaunchTool) | Out-Null
+    $manualPanel.Children.Add($manualInfo) | Out-Null
+    $manualGroup.Content = $manualPanel
+    $contentStack.Children.Add($manualGroup) | Out-Null
+
+    $rootGrid.Children.Add($scrollViewer) | Out-Null
+
+    $statusGrid = New-Object System.Windows.Controls.Grid
+    $statusGrid.Margin = '10'
+    $statusGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = '*' }))
+    $statusGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = 'Auto' }))
+    [System.Windows.Controls.Grid]::SetRow($statusGrid, 1)
+
+    $script:lstStatus = New-Object System.Windows.Controls.ListBox
+    [System.Windows.Controls.Grid]::SetRow($script:lstStatus, 0)
+    $statusGrid.Children.Add($script:lstStatus) | Out-Null
+
+    $buttonPanel = New-Object System.Windows.Controls.DockPanel
+    $buttonPanel.LastChildFill = $true
+    $buttonPanel.Margin = '0,8,0,0'
+    [System.Windows.Controls.Grid]::SetRow($buttonPanel, 1)
+
+    $script:btnLaunch = New-Object System.Windows.Controls.Button
+    $script:btnLaunch.Content = 'GO'
+    $script:btnLaunch.Width = 100
+    $script:btnLaunch.Margin = '0,0,10,0'
+
+    $script:btnCancel = New-Object System.Windows.Controls.Button
+    $script:btnCancel.Content = 'Close'
+    $script:btnCancel.Width = 100
+
+    $buttonsStack = New-Object System.Windows.Controls.StackPanel
+    $buttonsStack.Orientation = 'Horizontal'
+    $buttonsStack.HorizontalAlignment = 'Right'
+    $buttonsStack.Children.Add($script:btnCancel) | Out-Null
+    $buttonsStack.Children.Add($script:btnLaunch) | Out-Null
+    [System.Windows.Controls.DockPanel]::SetDock($buttonsStack, 'Right')
+
+    $script:lblComplete = New-Object System.Windows.Controls.TextBlock
+    $script:lblComplete.Text = ''
+    $script:lblComplete.FontSize = 14
+    $script:lblComplete.FontWeight = 'Bold'
+    $script:lblComplete.Foreground = 'Green'
+    $script:lblComplete.VerticalAlignment = 'Center'
+    $script:lblComplete.Visibility = 'Collapsed'
+
+    $buttonPanel.Children.Add($buttonsStack) | Out-Null
+    $buttonPanel.Children.Add($script:lblComplete) | Out-Null
+    $statusGrid.Children.Add($buttonPanel) | Out-Null
+
+    $rootGrid.Children.Add($statusGrid) | Out-Null
+    $script:form.Content = $rootGrid
 }
 
 #endregion GUI Creation
@@ -311,18 +413,28 @@ function Initialize-GuiElements {
 
 function Register-EventHandlers {
     # Tool selection checkboxes
-    $chkBoxes['BurpSuite'].Add_CheckedChanged({
-        $script:txtBurp.Enabled = $this.Checked
-        $script:btnBrowse.Enabled = $this.Checked
-        $script:cmbDDTestBurp.Enabled = $this.Checked -and $script:cmbDDTestBurp.Items.Count -gt 0
+    $chkBoxes['BurpSuite'].Add_Checked({
+        $script:txtBurp.IsEnabled = $true
+        $script:btnBrowse.IsEnabled = $true
+        $script:cmbDDTestBurp.IsEnabled = ($script:cmbDDTestBurp.Items.Count -gt 0)
     })
-    $chkBoxes['TenableWAS'].Add_CheckedChanged({
-        $script:lstTenableScans.Enabled = $this.Checked
-        $script:txtTenableSearch.Enabled = $this.Checked
-        $script:btnRefreshTenable.Enabled = $this.Checked
-        if ($this.Checked -and $script:lstTenableScans.Items.Count -eq 0) {
+    $chkBoxes['BurpSuite'].Add_Unchecked({
+        $script:txtBurp.IsEnabled = $false
+        $script:btnBrowse.IsEnabled = $false
+        $script:cmbDDTestBurp.IsEnabled = $false
+    })
+    $chkBoxes['TenableWAS'].Add_Checked({
+        $script:tenableScroll.IsEnabled = $true
+        $script:txtTenableSearch.IsEnabled = $true
+        $script:btnRefreshTenable.IsEnabled = $true
+        if ($script:tenableScanPanel.Children.Count -eq 0) {
             Load-TenableScans
         }
+    })
+    $chkBoxes['TenableWAS'].Add_Unchecked({
+        $script:tenableScroll.IsEnabled = $false
+        $script:txtTenableSearch.IsEnabled = $false
+        $script:btnRefreshTenable.IsEnabled = $false
     })
     $script:btnRefreshTenable.Add_Click({ Load-TenableScans })
     
@@ -331,21 +443,31 @@ function Register-EventHandlers {
         Apply-TenableSearch -SearchTerm $this.Text
     })
 
-    $chkBoxes['SonarQube'].Add_CheckedChanged({
-        $script:cmbDDTestSonar.Enabled = $this.Checked -and $script:cmbDDTestSonar.Items.Count -gt 0
-        $script:cmbDDApiScan.Enabled = $this.Checked -and $script:cmbDDApiScan.Items.Count -gt 0
+    $chkBoxes['SonarQube'].Add_Checked({
+        $script:cmbDDTestSonar.IsEnabled = ($script:cmbDDTestSonar.Items.Count -gt 0)
+        $script:cmbDDApiScan.IsEnabled = ($script:cmbDDApiScan.Items.Count -gt 0)
+    })
+    $chkBoxes['SonarQube'].Add_Unchecked({
+        $script:cmbDDTestSonar.IsEnabled = $false
+        $script:cmbDDApiScan.IsEnabled = $false
     })
     foreach ($key in $script:gitHubToolKeys) {
-        $chkBoxes[$key].Add_CheckedChanged({
-            Update-GitHubControlState
-        })
+        $chkBoxes[$key].Add_Checked({ Update-GitHubControlState })
+        $chkBoxes[$key].Add_Unchecked({ Update-GitHubControlState })
     }
-    $chkBoxes['DefectDojo'].Add_CheckedChanged({
-        $script:cmbDDSeverity.Enabled = $this.Checked
-        $script:chkDDCloseFindings.Enabled = $this.Checked
-        $script:txtTags.Enabled = $this.Checked
-        $script:chkApplyTagsToFindings.Enabled = $this.Checked
-        $script:chkApplyTagsToEndpoints.Enabled = $this.Checked
+    $chkBoxes['DefectDojo'].Add_Checked({
+        $script:cmbDDSeverity.IsEnabled = $true
+        $script:chkDDCloseFindings.IsEnabled = $true
+        $script:txtTags.IsEnabled = $true
+        $script:chkApplyTagsToFindings.IsEnabled = $true
+        $script:chkApplyTagsToEndpoints.IsEnabled = $true
+    })
+    $chkBoxes['DefectDojo'].Add_Unchecked({
+        $script:cmbDDSeverity.IsEnabled = $false
+        $script:chkDDCloseFindings.IsEnabled = $false
+        $script:txtTags.IsEnabled = $false
+        $script:chkApplyTagsToFindings.IsEnabled = $false
+        $script:chkApplyTagsToEndpoints.IsEnabled = $false
     })
 
     # Browse for BurpSuite folder
@@ -357,31 +479,37 @@ function Register-EventHandlers {
     })
 
     # DefectDojo dropdowns
-    $cmbDDProduct.Add_SelectedIndexChanged({ Handle-ProductChange })
-    $cmbDDEng.Add_SelectedIndexChanged({ Handle-EngagementChange })
+    $cmbDDProduct.Add_SelectionChanged({ Handle-ProductChange })
+    $cmbDDEng.Add_SelectionChanged({ Handle-EngagementChange })
 
     # Launch DefectDojo CLI button
     $btnLaunchTool.Add_Click({ Invoke-ExternalTool })
 
     # Main action buttons
     $btnLaunch.Add_Click({ Invoke-Automation })
-    $btnCancel.Text = "Close"  # Rename to "Close" for clarity
+    $btnCancel.Content = 'Close'
     $btnCancel.Add_Click({ $script:form.Close() })
 
     Update-GitHubControlState
 }
 
+function Get-WpfSelectedTool {
+    param([string]$ToolName)
+    if (-not $script:chkBoxes.ContainsKey($ToolName)) { return $false }
+    return [bool]$script:chkBoxes[$ToolName].IsChecked
+}
+
 function Update-GitHubControlState {
     $anyGitHub = $false
     foreach ($key in $script:gitHubToolKeys) {
-        if ($script:chkBoxes.ContainsKey($key) -and $script:chkBoxes[$key].Checked) {
+        if ($script:chkBoxes.ContainsKey($key) -and $script:chkBoxes[$key].IsChecked) {
             $anyGitHub = $true
             break
         }
     }
 
-    $script:txtGitHubOrgs.Enabled = $anyGitHub
-    $script:cmbDDTestDependabot.Enabled = $script:chkBoxes['GitHubDependabot'].Checked -and $script:cmbDDTestDependabot.Items.Count -gt 0
+    $script:txtGitHubOrgs.IsEnabled = $anyGitHub
+    $script:cmbDDTestDependabot.IsEnabled = ($script:chkBoxes['GitHubDependabot'].IsChecked -and $script:cmbDDTestDependabot.Items.Count -gt 0)
 }
 
 function Handle-ProductChange {
@@ -395,12 +523,12 @@ function Handle-ProductChange {
         if ($engagements) {
             foreach ($e in $engagements) { $script:cmbDDEng.Items.Add($e) | Out-Null }
         }
-        $script:cmbDDEng.DisplayMember = 'Name'; $script:cmbDDEng.ValueMember = 'Id'
-        $script:cmbDDEng.Enabled = $true
+        $script:cmbDDEng.DisplayMemberPath = 'Name'; $script:cmbDDEng.SelectedValuePath = 'Id'
+        $script:cmbDDEng.IsEnabled = $true
 
         # Clear subsequent dropdowns
         @($script:cmbDDTestSonar, $script:cmbDDTestBurp) | ForEach-Object {
-            $_.Enabled = $false; $_.Items.Clear()
+            $_.IsEnabled = $false; $_.Items.Clear()
         }
     } catch {
         Write-GuiMessage "Failed to load engagements: $_" 'ERROR'
@@ -419,17 +547,17 @@ function Handle-EngagementChange {
             if ($tests) {
                 foreach ($t in $tests) { $cmb.Items.Add($t) | Out-Null }
             }
-            $cmb.ValueMember = 'Id'
+            $cmb.SelectedValuePath = 'Id'
         }
         # Set DisplayMember based on needed display, Title works for most Dojo tests
-        $script:cmbDDTestSonar.DisplayMember = 'Title'     # Show test type title for SonarQube
-        $script:cmbDDTestBurp.DisplayMember = 'Title'      # Show test type title for BurpSuite
-        $script:cmbDDTestDependabot.DisplayMember = 'Title'
+        $script:cmbDDTestSonar.DisplayMemberPath = 'Title'     # Show test type title for SonarQube
+        $script:cmbDDTestBurp.DisplayMemberPath = 'Title'      # Show test type title for BurpSuite
+        $script:cmbDDTestDependabot.DisplayMemberPath = 'Title'
 
         # Re-evaluate enabled state based on tool selection and if tests were found
-        $script:cmbDDTestSonar.Enabled  = $script:chkBoxes['SonarQube'].Checked  -and $tests.Count -gt 0
-        $script:cmbDDTestBurp.Enabled   = $script:chkBoxes['BurpSuite'].Checked -and $tests.Count -gt 0
-        $script:cmbDDTestDependabot.Enabled = $script:chkBoxes['GitHubDependabot'].Checked -and $tests.Count -gt 0
+        $script:cmbDDTestSonar.IsEnabled  = (Get-WpfSelectedTool -ToolName 'SonarQube') -and $tests.Count -gt 0
+        $script:cmbDDTestBurp.IsEnabled   = (Get-WpfSelectedTool -ToolName 'BurpSuite') -and $tests.Count -gt 0
+        $script:cmbDDTestDependabot.IsEnabled = (Get-WpfSelectedTool -ToolName 'GitHubDependabot') -and $tests.Count -gt 0
         Update-GitHubControlState
         if (-not $tests) {
             Write-GuiMessage "No DefectDojo tests found for engagement $($selectedEngagement.Name)." 'WARNING'
@@ -442,20 +570,20 @@ function Handle-EngagementChange {
 function Invoke-ExternalTool {
     try {
         # Disable button to prevent double clicks
-        $script:btnLaunchTool.Enabled = $false
+        $script:btnLaunchTool.IsEnabled = $false
         
         # Compute tool path
         $toolPath = Join-Path $PSScriptRoot 'modules\defectdojo-cli.exe'
         
         # Check if tool exists
         if (-not (Test-Path -Path $toolPath -PathType Leaf)) {
-            [System.Windows.Forms.MessageBox]::Show(
-                "DefectDojo CLI not found at modules\defectdojo-cli.exe. Please add the EXE to the modules folder.", 
-                "Tool Not Found", 
-                [System.Windows.Forms.MessageBoxButtons]::OK, 
-                [System.Windows.Forms.MessageBoxIcon]::Warning
+            [System.Windows.MessageBox]::Show(
+                "DefectDojo CLI not found at modules\defectdojo-cli.exe. Please add the EXE to the modules folder.",
+                'Tool Not Found',
+                'OK',
+                'Warning'
             ) | Out-Null
-            $script:btnLaunchTool.Enabled = $true
+            $script:btnLaunchTool.IsEnabled = $true
             return
         }
         
@@ -463,13 +591,13 @@ function Invoke-ExternalTool {
         $apiKey = $env:DOJO_API_KEY
         if ([string]::IsNullOrWhiteSpace($apiKey)) {
             Write-GuiMessage "DOJO_API_KEY environment variable is not set; cannot launch DefectDojo CLI." 'ERROR'
-            [System.Windows.Forms.MessageBox]::Show(
+            [System.Windows.MessageBox]::Show(
                 "DOJO_API_KEY is not configured. Please populate the variable and relaunch.",
-                "Missing Environment Variable",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
+                'Missing Environment Variable',
+                'OK',
+                'Error'
             ) | Out-Null
-            $script:btnLaunchTool.Enabled = $true
+            $script:btnLaunchTool.IsEnabled = $true
             return
         }
 
@@ -479,13 +607,13 @@ function Invoke-ExternalTool {
             Write-GuiMessage "DD_CLI_API_TOKEN synchronized with DOJO_API_KEY."
         } catch {
             Write-GuiMessage "Failed to set DD_CLI_API_TOKEN: $_" 'ERROR'
-            [System.Windows.Forms.MessageBox]::Show(
+            [System.Windows.MessageBox]::Show(
                 "Failed to update DD_CLI_API_TOKEN. See log for details.",
-                "Environment Variable Error",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
+                'Environment Variable Error',
+                'OK',
+                'Error'
             ) | Out-Null
-            $script:btnLaunchTool.Enabled = $true
+            $script:btnLaunchTool.IsEnabled = $true
             return
         }
 
@@ -507,7 +635,7 @@ function Invoke-ExternalTool {
         Write-GuiMessage "Failed to launch DefectDojo CLI: $_" 'ERROR'
     } finally {
         # Re-enable button
-        $script:btnLaunchTool.Enabled = $true
+        $script:btnLaunchTool.IsEnabled = $true
     }
 }
 
@@ -520,23 +648,22 @@ function Load-TenableScans {
     try {
         $scans = Get-TenableWASScanConfigs
         $script:allTenableScans = @()
-        $script:lstTenableScans.Items.Clear()
+        $script:tenableScanPanel.Children.Clear()
         if ($scans) {
             $script:allTenableScans = $scans
             Apply-TenableSearch -SearchTerm ($script:txtTenableSearch.Text)
         }
-        $script:lstTenableScans.DisplayMember = "Name"
-        $script:lstTenableScans.ValueMember = "Id"
         
         # Restore selection if config has names
         $config = Get-Config
         if ($config.TenableWASScanNames -and $config.TenableWASScanNames.Count -gt 0) {
-            for ($i = 0; $i -lt $script:lstTenableScans.Items.Count; $i++) {
-                $item = $script:lstTenableScans.Items[$i]
-                if ($item.Name -in $config.TenableWASScanNames) {
-                    $script:lstTenableScans.SetItemChecked($i, $true)
+            $script:checkedTenableScanIds = [System.Collections.Generic.HashSet[string]]::new()
+            foreach ($scan in $script:allTenableScans) {
+                if ($scan.Name -in $config.TenableWASScanNames) {
+                    $null = $script:checkedTenableScanIds.Add([string]$scan.Id)
                 }
             }
+            Apply-TenableSearch -SearchTerm ($script:txtTenableSearch.Text)
         }
     } catch {
         Write-GuiMessage "Failed to load TenableWAS scans: $_" 'ERROR'
@@ -547,14 +674,11 @@ function Apply-TenableSearch {
     param([string]$SearchTerm)
 
     # Preserve current checked IDs
-    $checkedIds = @()
-    for ($i = 0; $i -lt $script:lstTenableScans.Items.Count; $i++) {
-        if ($script:lstTenableScans.GetItemChecked($i)) {
-            $checkedIds += $script:lstTenableScans.Items[$i].Id
-        }
+    if (-not $script:checkedTenableScanIds) {
+        $script:checkedTenableScanIds = [System.Collections.Generic.HashSet[string]]::new()
     }
 
-    $script:lstTenableScans.Items.Clear()
+    $script:tenableScanPanel.Children.Clear()
     if (-not $script:allTenableScans) { return }
 
     $term = $SearchTerm
@@ -565,32 +689,40 @@ function Apply-TenableSearch {
     }
 
     foreach ($scan in $filtered) {
-        $null = $script:lstTenableScans.Items.Add($scan)
-    }
-
-    # Re-check items that were previously checked
-    for ($i = 0; $i -lt $script:lstTenableScans.Items.Count; $i++) {
-        if ($script:lstTenableScans.Items[$i].Id -in $checkedIds) {
-            $script:lstTenableScans.SetItemChecked($i, $true)
-        }
+        $checkbox = New-Object System.Windows.Controls.CheckBox
+        $checkbox.Content = $scan.Name
+        $checkbox.Tag = $scan
+        $checkbox.Margin = '2,2,2,2'
+        $checkbox.IsChecked = $script:checkedTenableScanIds.Contains([string]$scan.Id)
+        $checkbox.Add_Checked({
+            param($sender, $args)
+            $scanInfo = $sender.Tag
+            if ($scanInfo) { $null = $script:checkedTenableScanIds.Add([string]$scanInfo.Id) }
+        })
+        $checkbox.Add_Unchecked({
+            param($sender, $args)
+            $scanInfo = $sender.Tag
+            if ($scanInfo) { $null = $script:checkedTenableScanIds.Remove([string]$scanInfo.Id) }
+        })
+        $script:tenableScanPanel.Children.Add($checkbox) | Out-Null
     }
 }
 
 function Load-DefectDojoData {
-    if ($script:chkBoxes['DefectDojo'].Checked) {
+    if (Get-WpfSelectedTool -ToolName 'DefectDojo') {
         Write-GuiMessage 'Loading DefectDojo products...'
         try {
             $products = Get-DefectDojoProducts
             $script:cmbDDProduct.Items.Clear()
             foreach ($p in $products) { $script:cmbDDProduct.Items.Add($p) | Out-Null }
-            $script:cmbDDProduct.DisplayMember = 'Name'; $script:cmbDDProduct.ValueMember = 'Id'
-            $script:cmbDDProduct.Enabled = $true
+            $script:cmbDDProduct.DisplayMemberPath = 'Name'; $script:cmbDDProduct.SelectedValuePath = 'Id'
+            $script:cmbDDProduct.IsEnabled = $true
         } catch {
             Write-GuiMessage "Failed to load DefectDojo products: $_" 'ERROR'
         }
     }
 
-    if ($script:chkBoxes['SonarQube'].Checked) {
+    if (Get-WpfSelectedTool -ToolName 'SonarQube') {
         Write-GuiMessage 'Loading DefectDojo API scan configurations...'
         try {
             # This assumes a Product ID might be available in config for pre-loading.
@@ -601,8 +733,8 @@ function Load-DefectDojoData {
             if ($apiConfigs) {
                 foreach ($c in $apiConfigs) { $script:cmbDDApiScan.Items.Add($c) | Out-Null }
             }
-            $script:cmbDDApiScan.DisplayMember = 'Name'; $script:cmbDDApiScan.ValueMember = 'Id'
-            $script:cmbDDApiScan.Enabled = $true
+            $script:cmbDDApiScan.DisplayMemberPath = 'Name'; $script:cmbDDApiScan.SelectedValuePath = 'Id'
+            $script:cmbDDApiScan.IsEnabled = $true
         } catch {
             Write-GuiMessage "Failed to load API scan configurations: $_" 'ERROR'
         }
@@ -615,28 +747,31 @@ function Prepopulate-FormFromConfig {
     Write-GuiMessage "Loading settings from config file..."
     foreach ($tool in $script:tools) {
         if ($script:gitHubFeatureMap.Contains($tool)) {
-            $script:chkBoxes[$tool].Checked = Get-GitHubFeatureState -Config $Config -ToolKey $tool
+            $script:chkBoxes[$tool].IsChecked = Get-GitHubFeatureState -Config $Config -ToolKey $tool
         }
         elseif ($Config.Tools.ContainsKey($tool)) {
-            $script:chkBoxes[$tool].Checked = [bool]$Config.Tools[$tool]
+            $script:chkBoxes[$tool].IsChecked = [bool]$Config.Tools[$tool]
         }
         else {
-            $Config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+            $Config.Tools[$tool] = $script:chkBoxes[$tool].IsChecked
         }
     }
     Update-GitHubControlState
 
     # Enable DefectDojo-dependent controls if DefectDojo checkbox is checked
-    # (setting .Checked programmatically doesn't fire CheckedChanged event)
-    if ($script:chkBoxes['DefectDojo'].Checked) {
-        $script:cmbDDSeverity.Enabled = $true
-        $script:chkDDCloseFindings.Enabled = $true
-        $script:txtTags.Enabled = $true
-        $script:chkApplyTagsToFindings.Enabled = $true
-        $script:chkApplyTagsToEndpoints.Enabled = $true
+    # (setting .IsChecked programmatically doesn't fire CheckedChanged event)
+    if ($script:chkBoxes['DefectDojo'].IsChecked) {
+        $script:cmbDDSeverity.IsEnabled = $true
+        $script:chkDDCloseFindings.IsEnabled = $true
+        $script:txtTags.IsEnabled = $true
+        $script:chkApplyTagsToFindings.IsEnabled = $true
+        $script:chkApplyTagsToEndpoints.IsEnabled = $true
     }
 
-    if ($script:chkBoxes['TenableWAS'].Checked) {
+    if ($script:chkBoxes['TenableWAS'].IsChecked) {
+        if (-not $script:checkedTenableScanIds) {
+            $script:checkedTenableScanIds = [System.Collections.Generic.HashSet[string]]::new()
+        }
         Load-TenableScans
     }
 
@@ -666,17 +801,17 @@ function Prepopulate-FormFromConfig {
         if ($Config.DefectDojo.ProductId) {
             $selectedProduct = $script:cmbDDProduct.Items | Where-Object { $_.Id -eq $Config.DefectDojo.ProductId }
             if ($selectedProduct) {
-                $script:cmbDDProduct.SelectedItem = $selectedProduct
-                # Manually trigger dependent loads as events might not fire before form is shown
-                Handle-ProductChange
-                $script:form.Update() # Allow UI to update
+            $script:cmbDDProduct.SelectedItem = $selectedProduct
+            # Manually trigger dependent loads as events might not fire before form is shown
+            Handle-ProductChange
+            $script:form.Dispatcher.Invoke([action]{} )
                 
                 if ($Config.DefectDojo.EngagementId) {
                     $selectedEngagement = $script:cmbDDEng.Items | Where-Object { $_.Id -eq $Config.DefectDojo.EngagementId }
                     if ($selectedEngagement) {
-                        $script:cmbDDEng.SelectedItem = $selectedEngagement
-                        Handle-EngagementChange
-                        $script:form.Update()
+                    $script:cmbDDEng.SelectedItem = $selectedEngagement
+                    Handle-EngagementChange
+                    $script:form.Dispatcher.Invoke([action]{} )
 
                         # Pre-select test dropdowns after engagement is loaded
                         if ($Config.DefectDojo.SonarQubeTestId) {
@@ -705,17 +840,17 @@ function Prepopulate-FormFromConfig {
             $script:cmbDDSeverity.SelectedItem = $Config.DefectDojo.MinimumSeverity
         }
         if ($Config.DefectDojo.CloseOldFindings) {
-            $script:chkDDCloseFindings.Checked = $Config.DefectDojo.CloseOldFindings
+            $script:chkDDCloseFindings.IsChecked = $Config.DefectDojo.CloseOldFindings
         }
         if ($Config.DefectDojo.Tags) {
             $tagsText = ($Config.DefectDojo.Tags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ', '
             $script:txtTags.Text = $tagsText
         }
         if ($Config.DefectDojo.ApplyTagsToFindings) {
-            $script:chkApplyTagsToFindings.Checked = $Config.DefectDojo.ApplyTagsToFindings
+            $script:chkApplyTagsToFindings.IsChecked = $Config.DefectDojo.ApplyTagsToFindings
         }
         if ($Config.DefectDojo.ApplyTagsToEndpoints) {
-            $script:chkApplyTagsToEndpoints.Checked = $Config.DefectDojo.ApplyTagsToEndpoints
+            $script:chkApplyTagsToEndpoints.IsChecked = $Config.DefectDojo.ApplyTagsToEndpoints
         }
     }
     Write-GuiMessage "Pre-population complete."
@@ -729,30 +864,33 @@ function Prepopulate-FormFromConfig {
 function Invoke-Automation {
     try {
         # Disable the launch button while processing
-        $script:btnLaunch.Enabled = $false
-        $script:lblComplete.Visible = $false
+        $script:btnLaunch.IsEnabled = $false
+        $script:lblComplete.Visibility = 'Collapsed'
         
         $config = Get-Config
 
         # Validate GUI inputs
-        if ($script:chkBoxes['BurpSuite'].Checked -and -not (Test-Path -Path $script:txtBurp.Text -PathType Container)) {
-            [System.Windows.Forms.MessageBox]::Show("Please select a valid BurpSuite XML folder.", "Validation Error", "OK", "Error") | Out-Null
-            $script:btnLaunch.Enabled = $true
+        if ($script:chkBoxes['BurpSuite'].IsChecked -and -not (Test-Path -Path $script:txtBurp.Text -PathType Container)) {
+            [System.Windows.MessageBox]::Show("Please select a valid BurpSuite XML folder.", 'Validation Error', 'OK', 'Error') | Out-Null
+            $script:btnLaunch.IsEnabled = $true
             return
         }
 
         # Update config from GUI selections
         foreach ($tool in $script:tools) {
             if ($script:gitHubFeatureMap.Contains($tool)) {
-                Set-GitHubFeatureState -Config $config -ToolKey $tool -Value $script:chkBoxes[$tool].Checked
+                Set-GitHubFeatureState -Config $config -ToolKey $tool -Value $script:chkBoxes[$tool].IsChecked
             }
             else {
-                $config.Tools[$tool] = $script:chkBoxes[$tool].Checked
+                $config.Tools[$tool] = $script:chkBoxes[$tool].IsChecked
             }
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
         
-        $selectedScans = $script:lstTenableScans.CheckedItems
+        if (-not $script:checkedTenableScanIds) {
+            $script:checkedTenableScanIds = [System.Collections.Generic.HashSet[string]]::new()
+        }
+        $selectedScans = @($script:allTenableScans | Where-Object { $script:checkedTenableScanIds.Contains([string]$_.Id) })
         $tenableScanNamesChanged = $false
         if ($selectedScans.Count -gt 0) {
              $newScanNames = @($selectedScans | ForEach-Object { $_.Name })
@@ -847,7 +985,7 @@ function Invoke-Automation {
                 $isEnabled = [bool]$config.Tools[$tool]
             }
             if ($isEnabled) {
-                $selectedToolLabels += $script:chkBoxes[$tool].Text
+                $selectedToolLabels += [string]$script:chkBoxes[$tool].Content
             }
         }
         Write-GuiMessage "Selected Tools: $($selectedToolLabels -join ', ')"
@@ -900,14 +1038,14 @@ function Invoke-Automation {
 
         # Show completion message
         $script:lblComplete.Text = "Complete! Ready for next task."
-        $script:lblComplete.Visible = $true
+        $script:lblComplete.Visibility = 'Visible'
         
         # Re-enable the launch button to allow for additional tasks
-        $script:btnLaunch.Enabled = $true
+        $script:btnLaunch.IsEnabled = $true
 
     } catch {
         Write-GuiMessage "An unexpected error occurred: $_" 'ERROR'
-        $script:btnLaunch.Enabled = $true
+        $script:btnLaunch.IsEnabled = $true
     }
 }
 
@@ -939,8 +1077,8 @@ function Save-DefectDojoConfig {
     }
     # Save tag flags
     if (-not $Config.DefectDojo) { $Config.DefectDojo = @{} }
-    $Config.DefectDojo.ApplyTagsToFindings = $script:chkApplyTagsToFindings.Checked
-    $Config.DefectDojo.ApplyTagsToEndpoints = $script:chkApplyTagsToEndpoints.Checked
+    $Config.DefectDojo.ApplyTagsToFindings = [bool]$script:chkApplyTagsToFindings.IsChecked
+    $Config.DefectDojo.ApplyTagsToEndpoints = [bool]$script:chkApplyTagsToEndpoints.IsChecked
 
     # Validate that all necessary selections have been made
     $incomplete = $false
@@ -960,9 +1098,9 @@ function Save-DefectDojoConfig {
         BurpSuiteTestId   = $selections.BurpSuiteTest.Id
         GitHubDependabotTestId = $selections.GitHubDependabotTest.Id
         MinimumSeverity   = $selections.MinimumSeverity
-        CloseOldFindings  = $script:chkDDCloseFindings.Checked
-        ApplyTagsToFindings = $script:chkApplyTagsToFindings.Checked
-        ApplyTagsToEndpoints = $script:chkApplyTagsToEndpoints.Checked
+        CloseOldFindings  = [bool]$script:chkDDCloseFindings.IsChecked
+        ApplyTagsToFindings = [bool]$script:chkApplyTagsToFindings.IsChecked
+        ApplyTagsToEndpoints = [bool]$script:chkApplyTagsToEndpoints.IsChecked
         Tags = $Config.DefectDojo.Tags  # Preserve tags that were saved before validation
     }
 
@@ -998,7 +1136,10 @@ function Main {
 
     # Show the form
     $script:form.ShowDialog() | Out-Null
-    $script:form.Dispose()
+    if ($script:form -and $script:form.IsVisible) {
+        $script:form.Close()
+    }
+    $script:form = $null
 }
 
 Main
