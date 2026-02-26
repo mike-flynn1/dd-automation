@@ -218,6 +218,35 @@ Describe 'Save-Config' {
             $savedContent | Should -Match "WebhookUrl = 'https://example.com/webhook\?token=abc''def&key=123'"
         }
     }
+
+    Context 'When no ConfigPath is provided' {
+        It 'Uses the active config path when set' {
+            $script:tempConfigPath = Join-Path $TestDrive 'active-config.psd1'
+            $config = @{
+                Tools = @{ TenableWAS = $true }
+                ApiBaseUrls = @{ TenableWAS = 'https://example.com' }
+                Paths = @{ BurpSuiteXmlFolder = 'C:\temp' }
+            }
+
+            $originalActivePath = $global:DDAutomation_ActiveConfigPath
+            try {
+                Set-ActiveConfigPath -Path $script:tempConfigPath
+                Save-Config -Config $config
+
+                $script:tempConfigPath | Should -Exist
+                $savedContent = Get-Content $script:tempConfigPath -Raw
+                $savedContent | Should -Match "Tools = @\{" 
+            }
+            finally {
+                if ($null -ne $originalActivePath) {
+                    $global:DDAutomation_ActiveConfigPath = $originalActivePath
+                }
+                else {
+                    $global:DDAutomation_ActiveConfigPath = $null
+                }
+            }
+        }
+    }
 }
 
 Describe 'Resolve-TenableWASScans' {

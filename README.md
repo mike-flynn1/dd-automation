@@ -306,6 +306,11 @@ The GUI provides an intuitive interface for configuring and running automation w
 .\Launch.ps1
 ```
 
+**Launch with a custom config file**:
+```powershell
+.\Launch.ps1 -ConfigPath "C:\Configs\CustomConfig.psd1"
+```
+
 **GUI Features**:
 1. **Tool Selection**: Check/uncheck tools to enable/disable integrations
 2. **TenableWAS Controls**:
