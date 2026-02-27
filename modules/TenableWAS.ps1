@@ -13,7 +13,10 @@
 
 .PARAMETER ScanName
     The display name of the scan configuration in Tenable WAS (required).
-    The function will look up the corresponding scan ID from the most recent scan.
+    Used for lookup and for the output filename.
+
+.PARAMETER ScanId
+    Optional scan ID to use directly (skips scan configuration lookup).
 
 .OUTPUTS
     Returns the downloaded CSV report file in the temp directory.
@@ -38,23 +41,29 @@ function Export-TenableWASScan {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ScanName
+        [string]$ScanName,
+
+        [string]$ScanId
     )
 
     # Load configuration
     $config = Get-Config
 
-    # Look up scan ID by name
-    Write-Log -Message "Looking up scan ID for scan name: $ScanName" -Level 'INFO'
-    $scanConfigs = Get-TenableWASScanConfigs
-    $matchedScan = $scanConfigs | Where-Object { $_.Name -eq $ScanName }
+    if ([string]::IsNullOrWhiteSpace($ScanId)) {
+        # Look up scan ID by name
+        Write-Log -Message "Looking up scan ID for scan name: $ScanName" -Level 'INFO'
+        $scanConfigs = Get-TenableWASScanConfigs
+        $matchedScan = $scanConfigs | Where-Object { $_.Name -eq $ScanName }
 
-    if ($matchedScan) {
-        $ScanId = $matchedScan.Id
-        Write-Log -Message "Found scan ID $ScanId for scan name: $ScanName" -Level 'INFO'
+        if ($matchedScan) {
+            $ScanId = $matchedScan.Id
+            Write-Log -Message "Found scan ID $ScanId for scan name: $ScanName" -Level 'INFO'
+        } else {
+            Write-Log -Message "No scan found with name: $ScanName" -Level 'ERROR'
+            Throw "No scan found with name: $ScanName"
+        }
     } else {
-        Write-Log -Message "No scan found with name: $ScanName" -Level 'ERROR'
-        Throw "No scan found with name: $ScanName"
+        Write-Log -Message "Using provided scan ID $ScanId for scan name: $ScanName" -Level 'INFO'
     }
 
     # Prepare API connection
@@ -195,7 +204,7 @@ function Export-TenableWASScan {
 
 .EXAMPLE
     $scanId = (Get-TenableWASScanConfigs | Where-Object { $_.Name -eq "My Scan" }).Id
-    Export-TenableWASScan -ScanId $scanId
+    Export-TenableWASScan -ScanName "My Scan" -ScanId $scanId
 
     Looks up the scan ID for a specific scan configuration by name and exports it
 

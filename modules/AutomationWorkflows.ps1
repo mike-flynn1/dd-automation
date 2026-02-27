@@ -87,7 +87,7 @@ function Invoke-Workflow-TenableWAS {
 
         Write-Log -Message "Starting TenableWAS scan export (Scan: $($scan.Name) - ID: $($scan.Id))"
         try {
-            $exportedFile = Export-TenableWASScan -ScanName $scan.Name
+            $exportedFile = Export-TenableWASScan -ScanName $scan.Name -ScanId $scan.Id
             Write-Log -Message "TenableWAS scan export completed: $exportedFile"
 
             if ($Config.Tools.DefectDojo) {

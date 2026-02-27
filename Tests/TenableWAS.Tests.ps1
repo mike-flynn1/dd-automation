@@ -112,6 +112,13 @@ Describe 'Export-TenableWASScan (Unit)' {
             { Export-TenableWASScan -ScanName 'NonExistent Scan' } | Should -Throw 'No scan found with name: NonExistent Scan'
         }
 
+        It 'Skips scan lookup when ScanId is provided' {
+            Mock Get-TenableWASScanConfigs { throw 'Lookup should not be called' }
+            Mock Invoke-RestMethod { }
+
+            { Export-TenableWASScan -ScanName 'Provided Scan' -ScanId 'scan-id-999' } | Should -Not -Throw
+        }
+
         It 'Surfaces friendly message when report is still generating' {
             Mock Get-TenableWASScanConfigs {
                 return @(
