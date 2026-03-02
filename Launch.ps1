@@ -96,7 +96,7 @@ public static class ProcessDpiAwareness {
 
 Initialize-WpfRuntime
 
-# Load remaining modules after DPI/WinForms initialization.
+# Load remaining modules after DPI/WPF runtime initialization.
 . (Join-Path $scriptDir 'modules\Config.ps1')
 . (Join-Path $scriptDir 'modules\GitHub.ps1')
 . (Join-Path $scriptDir 'modules\TenableWAS.ps1')
@@ -401,8 +401,8 @@ function Initialize-GuiElements {
     $buttonsStack = New-Object System.Windows.Controls.StackPanel
     $buttonsStack.Orientation = 'Horizontal'
     $buttonsStack.HorizontalAlignment = 'Right'
-    $buttonsStack.Children.Add($script:btnCancel) | Out-Null
     $buttonsStack.Children.Add($script:btnLaunch) | Out-Null
+    $buttonsStack.Children.Add($script:btnCancel) | Out-Null
     [System.Windows.Controls.DockPanel]::SetDock($buttonsStack, 'Right')
 
     $script:lblComplete = New-Object System.Windows.Controls.TextBlock
@@ -516,14 +516,14 @@ function Get-WpfSelectedTool {
 function Update-GitHubControlState {
     $anyGitHub = $false
     foreach ($key in $script:gitHubToolKeys) {
-        if ($script:chkBoxes.ContainsKey($key) -and $script:chkBoxes[$key].IsChecked) {
+        if ($script:chkBoxes.ContainsKey($key) -and ($script:chkBoxes[$key].IsChecked -eq $true)) {
             $anyGitHub = $true
             break
         }
     }
 
     $script:txtGitHubOrgs.IsEnabled = $anyGitHub
-    $script:cmbDDTestDependabot.IsEnabled = ($script:chkBoxes['GitHubDependabot'].IsChecked -and $script:cmbDDTestDependabot.Items.Count -gt 0)
+    $script:cmbDDTestDependabot.IsEnabled = (($script:chkBoxes['GitHubDependabot'].IsChecked -eq $true) -and $script:cmbDDTestDependabot.Items.Count -gt 0)
 }
 
 function Handle-ProductChange {
@@ -767,14 +767,13 @@ function Prepopulate-FormFromConfig {
             $script:chkBoxes[$tool].IsChecked = [bool]$Config.Tools[$tool]
         }
         else {
-            $Config.Tools[$tool] = $script:chkBoxes[$tool].IsChecked
+            $Config.Tools[$tool] = ($script:chkBoxes[$tool].IsChecked -eq $true)
         }
     }
     Update-GitHubControlState
 
-    # Enable DefectDojo-dependent controls if DefectDojo checkbox is checked
-    # (setting .IsChecked programmatically doesn't fire CheckedChanged event)
-    if ($script:chkBoxes['DefectDojo'].IsChecked) {
+    # Ensure dependent controls are in the expected state after pre-population.
+    if ($script:chkBoxes['DefectDojo'].IsChecked -eq $true) {
         $script:cmbDDSeverity.IsEnabled = $true
         $script:chkDDCloseFindings.IsEnabled = $true
         $script:txtTags.IsEnabled = $true
@@ -782,7 +781,7 @@ function Prepopulate-FormFromConfig {
         $script:chkApplyTagsToEndpoints.IsEnabled = $true
     }
 
-    if ($script:chkBoxes['TenableWAS'].IsChecked) {
+    if ($script:chkBoxes['TenableWAS'].IsChecked -eq $true) {
         if (-not $script:checkedTenableScanIds) {
             $script:checkedTenableScanIds = [System.Collections.Generic.HashSet[string]]::new()
         }
@@ -815,17 +814,19 @@ function Prepopulate-FormFromConfig {
         if ($Config.DefectDojo.ProductId) {
             $selectedProduct = $script:cmbDDProduct.Items | Where-Object { $_.Id -eq $Config.DefectDojo.ProductId }
             if ($selectedProduct) {
-            $script:cmbDDProduct.SelectedItem = $selectedProduct
-            # Manually trigger dependent loads as events might not fire before form is shown
-            Handle-ProductChange
-            $script:form.Dispatcher.Invoke([action]{} )
+                $script:cmbDDProduct.SelectedItem = $selectedProduct
+                # Manually trigger dependent loads and flush pending UI work.
+                Handle-ProductChange
+                $script:form.UpdateLayout()
+                $script:form.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{ })
                 
                 if ($Config.DefectDojo.EngagementId) {
                     $selectedEngagement = $script:cmbDDEng.Items | Where-Object { $_.Id -eq $Config.DefectDojo.EngagementId }
                     if ($selectedEngagement) {
-                    $script:cmbDDEng.SelectedItem = $selectedEngagement
-                    Handle-EngagementChange
-                    $script:form.Dispatcher.Invoke([action]{} )
+                        $script:cmbDDEng.SelectedItem = $selectedEngagement
+                        Handle-EngagementChange
+                        $script:form.UpdateLayout()
+                        $script:form.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{ })
 
                         # Pre-select test dropdowns after engagement is loaded
                         if ($Config.DefectDojo.SonarQubeTestId) {
@@ -884,7 +885,7 @@ function Invoke-Automation {
         $config = Get-Config
 
         # Validate GUI inputs
-        if ($script:chkBoxes['BurpSuite'].IsChecked -and -not (Test-Path -Path $script:txtBurp.Text -PathType Container)) {
+        if (($script:chkBoxes['BurpSuite'].IsChecked -eq $true) -and -not (Test-Path -Path $script:txtBurp.Text -PathType Container)) {
             [System.Windows.MessageBox]::Show("Please select a valid BurpSuite XML folder.", 'Validation Error', 'OK', 'Error') | Out-Null
             $script:btnLaunch.IsEnabled = $true
             return
@@ -893,10 +894,10 @@ function Invoke-Automation {
         # Update config from GUI selections
         foreach ($tool in $script:tools) {
             if ($script:gitHubFeatureMap.Contains($tool)) {
-                Set-GitHubFeatureState -Config $config -ToolKey $tool -Value $script:chkBoxes[$tool].IsChecked
+                Set-GitHubFeatureState -Config $config -ToolKey $tool -Value ($script:chkBoxes[$tool].IsChecked -eq $true)
             }
             else {
-                $config.Tools[$tool] = $script:chkBoxes[$tool].IsChecked
+                $config.Tools[$tool] = ($script:chkBoxes[$tool].IsChecked -eq $true)
             }
         }
         if ($config.Tools.BurpSuite) { $config.Paths.BurpSuiteXmlFolder = $script:txtBurp.Text }
