@@ -194,12 +194,14 @@ Describe 'GitHub-CodeQLDownload' {
                 [pscustomobject]@{ id = 1; category = 'codeql'; created_at = [datetime]'2024-05-01'; results_count = 1; url = 'https://analysis/1'; name = 'repo' },
                 [pscustomobject]@{ id = 3; category = 'alerts'; created_at = [datetime]'2024-04-01'; results_count = 0; url = 'https://analysis/3'; name = 'repo' }
             )
-        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
-        Mock Invoke-WebRequest {}
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=0' }
+        Mock Invoke-WebRequest {
+            return [pscustomobject]@{ Content = '{}' }
+        }
 
         GitHub-CodeQLDownload
 
-        Assert-MockCalled Invoke-WebRequest -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-WebRequest -Times 1 -ParameterFilter {
             $Uri -eq 'https://analysis/2' -and $OutFile.EndsWith('OrgOne-repo-2.sarif')
         }
     }
@@ -219,12 +221,14 @@ Describe 'GitHub-CodeQLDownload' {
         }
         Mock Invoke-GitHubPagedJson {
             throw (New-Object System.Exception 'REST failure')
-        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
-        Mock Invoke-WebRequest {}
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=0' }
+        Mock Invoke-WebRequest {
+            return [pscustomobject]@{ Content = '{}' }
+        }
         Mock Write-Log {}
 
         { GitHub-CodeQLDownload } | Should -Not -Throw
-        Assert-MockCalled Invoke-WebRequest -Times 0
+        Should -Invoke Invoke-WebRequest -Times 0
     }
 
     It 'Skips downloads when no analyses are returned' {
@@ -240,12 +244,14 @@ Describe 'GitHub-CodeQLDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=200' }
-        Mock Invoke-WebRequest {}
+        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/code-scanning/analyses?per_page=0' }
+        Mock Invoke-WebRequest {
+            return [pscustomobject]@{ Content = '{}' }
+        }
 
         GitHub-CodeQLDownload
 
-        Assert-MockCalled Invoke-WebRequest -Times 0
+        Should -Invoke Invoke-WebRequest -Times 0
     }
 }
 
@@ -295,7 +301,7 @@ Describe 'GitHub-SecretScanDownload' {
         }
         Mock Invoke-GitHubPagedJson {
             @([pscustomobject]@{ id = 1 })
-        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=100' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=0' }
 
         GitHub-SecretScanDownload
 
@@ -317,7 +323,7 @@ Describe 'GitHub-SecretScanDownload' {
         Mock Get-GitHubRepos {
             @([pscustomobject]@{ name = 'repo'; ResolvedOrg = 'OrgOne'; full_name = 'OrgOne/repo' })
         }
-        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=100' }
+        Mock Invoke-GitHubPagedJson { @() } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=0' }
 
         GitHub-SecretScanDownload
 
@@ -343,7 +349,7 @@ Describe 'GitHub-SecretScanDownload' {
             $ex = New-Object System.Exception 'Forbidden'
             Add-Member -InputObject $ex -MemberType NoteProperty -Name Response -Value ([pscustomobject]@{ Content = 'Secret Scanning is disabled for this repository.' }) -Force
             throw $ex
-        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=100' }
+        } -ParameterFilter { $InitialUri -eq 'https://api.github.test/repos/OrgOne/repo/secret-scanning/alerts?state=open&per_page=0' }
 
         GitHub-SecretScanDownload
 
