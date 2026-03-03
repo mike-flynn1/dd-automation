@@ -454,7 +454,9 @@ function Register-EventHandlers {
     
     # Tenable scan search/filter
     $script:txtTenableSearch.Add_TextChanged({
-        Apply-TenableSearch -SearchTerm $this.Text
+        param($sender, $eventArgs)
+        $textBox = [System.Windows.Controls.TextBox]$sender
+        Apply-TenableSearch -SearchTerm $textBox.Text
     })
 
     $chkBoxes['SonarQube'].Add_Checked({
@@ -739,16 +741,26 @@ function Load-DefectDojoData {
     if (Get-WpfSelectedTool -ToolName 'SonarQube') {
         Write-GuiMessage 'Loading DefectDojo API scan configurations...'
         try {
-            # This assumes a Product ID might be available in config for pre-loading.
-            # If not, Get-DefectDojoApiScanConfigurations should handle a null ProductId.
             $config = Get-Config
-            $apiConfigs = Get-DefectDojoApiScanConfigurations -ProductId $config.DefectDojo.APIScanConfigID
             $script:cmbDDApiScan.Items.Clear()
-            if ($apiConfigs) {
-                foreach ($c in $apiConfigs) { $script:cmbDDApiScan.Items.Add($c) | Out-Null }
+
+            $productId = $null
+            if ($config.DefectDojo -and $config.DefectDojo.ProductId) {
+                $productId = [int]$config.DefectDojo.ProductId
             }
+
+            if ($productId) {
+                $apiConfigs = Get-DefectDojoApiScanConfigurations -ProductId $productId
+                if ($apiConfigs) {
+                    foreach ($c in $apiConfigs) { $script:cmbDDApiScan.Items.Add($c) | Out-Null }
+                }
+            }
+            else {
+                Write-GuiMessage 'Cannot pre-load API scan configurations because DefectDojo ProductId is not set in config.' 'WARNING'
+            }
+
             $script:cmbDDApiScan.DisplayMemberPath = 'Name'; $script:cmbDDApiScan.SelectedValuePath = 'Id'
-            $script:cmbDDApiScan.IsEnabled = $true
+            $script:cmbDDApiScan.IsEnabled = ($script:cmbDDApiScan.Items.Count -gt 0)
         } catch {
             Write-GuiMessage "Failed to load API scan configurations: $_" 'ERROR'
         }
