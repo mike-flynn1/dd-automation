@@ -130,6 +130,10 @@ function Write-GuiMessage {
     $script:lstStatus.Items.Add("$timestamp [$Level] $Message") | Out-Null
     # Auto-scroll to the latest message
     $script:lstStatus.ScrollIntoView($script:lstStatus.Items[$script:lstStatus.Items.Count - 1])
+    # Also scroll the parent ScrollViewer to ensure visibility
+    if ($script:statusScrollViewer) {
+        $script:statusScrollViewer.ScrollToEnd()
+    }
 }
 
 function Get-GitHubFeatureState {
@@ -376,13 +380,21 @@ function Initialize-GuiElements {
 
     $statusGrid = New-Object System.Windows.Controls.Grid
     $statusGrid.Margin = '10'
+    # Fixed height for status area - approximately 1/3 of minimum window height (720 * 0.33 ≈ 240)
+    $statusGrid.MaxHeight = 240
     $statusGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = '*' }))
     $statusGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = 'Auto' }))
     [System.Windows.Controls.Grid]::SetRow($statusGrid, 1)
 
+    # Wrap ListBox in ScrollViewer for proper scrolling behavior
+    $script:statusScrollViewer = New-Object System.Windows.Controls.ScrollViewer
+    $script:statusScrollViewer.VerticalScrollBarVisibility = 'Auto'
+    $script:statusScrollViewer.HorizontalScrollBarVisibility = 'Disabled'
+    [System.Windows.Controls.Grid]::SetRow($script:statusScrollViewer, 0)
+
     $script:lstStatus = New-Object System.Windows.Controls.ListBox
-    [System.Windows.Controls.Grid]::SetRow($script:lstStatus, 0)
-    $statusGrid.Children.Add($script:lstStatus) | Out-Null
+    $script:statusScrollViewer.Content = $script:lstStatus
+    $statusGrid.Children.Add($script:statusScrollViewer) | Out-Null
 
     $buttonPanel = New-Object System.Windows.Controls.DockPanel
     $buttonPanel.LastChildFill = $true
