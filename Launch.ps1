@@ -10,11 +10,21 @@ Param(
     [string]$ConfigPath
 )
 
-#region Setup and Validation
+function Get-LauncherArguments {
+    $launcherArgs = @('-NoProfile', '-File', $PSCommandPath)
 
-# Enforce PowerShell 7.2+
-$minVersion = [version]"7.2"
-if ($PSVersionTable.PSVersion -lt $minVersion) {
+    if ($PSBoundParameters.ContainsKey('ConfigPath') -and -not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+        $launcherArgs += @('-ConfigPath', $ConfigPath)
+    }
+
+    if ($args.Count -gt 0) {
+        $launcherArgs += $args
+    }
+
+    return $launcherArgs
+}
+
+function Get-PwshCommand {
     $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
     if (-not $pwsh) {
         Write-Host "PowerShell 7.2+ is required."
@@ -27,9 +37,33 @@ if ($PSVersionTable.PSVersion -lt $minVersion) {
             exit 1
         }
     }
-    Write-Host "Relaunching under PowerShell 7.2+..."
-    & $pwsh.Source -NoProfile -File $MyInvocation.MyCommand.Definition @args
+
+    return $pwsh
+}
+
+function Restart-LauncherInPwsh {
+    param(
+        [string]$Reason,
+        [switch]$Sta
+    )
+
+    $pwsh = Get-PwshCommand
+    $launcherArgs = Get-LauncherArguments
+    if ($Sta) {
+        $launcherArgs = @('-Sta') + $launcherArgs
+    }
+
+    Write-Host $Reason
+    & $pwsh.Source @launcherArgs
     exit
+}
+
+#region Setup and Validation
+
+# Enforce PowerShell 7.2+
+$minVersion = [version]"7.2"
+if ($PSVersionTable.PSVersion -lt $minVersion) {
+    Restart-LauncherInPwsh -Reason 'Relaunching under PowerShell 7.2+...'
 }
 
 # Define script root and load core logging first.
@@ -42,6 +76,11 @@ $scriptDir = $PSScriptRoot
 Initialize-Log -LogDirectory (Join-Path $PSScriptRoot 'logs') -LogFileName 'DDAutomation_GUI.log' -MaxLogFiles 3
 Write-Log -Message "DD Automation Launcher started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level 'INFO'
 
+if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne [System.Threading.ApartmentState]::STA) {
+    Write-Log -Message 'Relaunching launcher in STA mode before WPF initialization.' -Level 'INFO'
+    Restart-LauncherInPwsh -Reason 'Relaunching under PowerShell STA mode for WPF...' -Sta
+}
+
 if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
     if (-not (Test-Path -Path $ConfigPath -PathType Leaf)) {
         Write-Log -Message "Config file not found at $ConfigPath" -Level 'ERROR'
@@ -50,8 +89,6 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
     }
 
     $resolvedConfigPath = (Resolve-Path -Path $ConfigPath).Path
-    Set-ActiveConfigPath -Path $resolvedConfigPath
-    Write-Log -Message "Using config path provided on command line: $resolvedConfigPath" -Level 'INFO'
 }
 
 $script:gitHubFeatureMap = [ordered]@{
@@ -107,6 +144,11 @@ Initialize-WpfRuntime
 . (Join-Path $scriptDir 'Uploader.ps1')
 . (Join-Path $scriptDir 'AutomationWorkflows.ps1')
 
+if (-not [string]::IsNullOrWhiteSpace($resolvedConfigPath)) {
+    Set-ActiveConfigPath -Path $resolvedConfigPath
+    Write-Log -Message "Using config path provided on command line: $resolvedConfigPath" -Level 'INFO'
+}
+
 # Validate environment dependencies before launching GUI
 try {
     Validate-Environment
@@ -130,10 +172,6 @@ function Write-GuiMessage {
     $script:lstStatus.Items.Add("$timestamp [$Level] $Message") | Out-Null
     # Auto-scroll to the latest message
     $script:lstStatus.ScrollIntoView($script:lstStatus.Items[$script:lstStatus.Items.Count - 1])
-    # Also scroll the parent ScrollViewer to ensure visibility
-    if ($script:statusScrollViewer) {
-        $script:statusScrollViewer.ScrollToEnd()
-    }
 }
 
 function Get-GitHubFeatureState {
@@ -218,8 +256,6 @@ function Initialize-GuiElements {
     $toolsWrap.Margin = '10'
     $toolsWrap.ItemWidth = 180
     $toolsGroup.Content = $toolsWrap
-
-    $script:toolTip = New-Object System.Windows.Controls.ToolTip
 
     foreach ($name in $script:tools) {
         $chk = New-Object System.Windows.Controls.CheckBox
@@ -386,15 +422,14 @@ function Initialize-GuiElements {
     $statusGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = 'Auto' }))
     [System.Windows.Controls.Grid]::SetRow($statusGrid, 1)
 
-    # Wrap ListBox in ScrollViewer for proper scrolling behavior
-    $script:statusScrollViewer = New-Object System.Windows.Controls.ScrollViewer
-    $script:statusScrollViewer.VerticalScrollBarVisibility = 'Auto'
-    $script:statusScrollViewer.HorizontalScrollBarVisibility = 'Disabled'
-    [System.Windows.Controls.Grid]::SetRow($script:statusScrollViewer, 0)
-
     $script:lstStatus = New-Object System.Windows.Controls.ListBox
-    $script:statusScrollViewer.Content = $script:lstStatus
-    $statusGrid.Children.Add($script:statusScrollViewer) | Out-Null
+    [System.Windows.Controls.ScrollViewer]::SetVerticalScrollBarVisibility($script:lstStatus, [System.Windows.Controls.ScrollBarVisibility]::Auto)
+    [System.Windows.Controls.ScrollViewer]::SetHorizontalScrollBarVisibility($script:lstStatus, [System.Windows.Controls.ScrollBarVisibility]::Disabled)
+    [System.Windows.Controls.ScrollViewer]::SetCanContentScroll($script:lstStatus, $true)
+    [System.Windows.Controls.VirtualizingStackPanel]::SetIsVirtualizing($script:lstStatus, $true)
+    [System.Windows.Controls.VirtualizingStackPanel]::SetVirtualizationMode($script:lstStatus, [System.Windows.Controls.VirtualizationMode]::Recycling)
+    [System.Windows.Controls.Grid]::SetRow($script:lstStatus, 0)
+    $statusGrid.Children.Add($script:lstStatus) | Out-Null
 
     $buttonPanel = New-Object System.Windows.Controls.DockPanel
     $buttonPanel.LastChildFill = $true
